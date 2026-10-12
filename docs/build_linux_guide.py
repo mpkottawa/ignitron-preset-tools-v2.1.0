@@ -38,9 +38,28 @@ def title(n,s):
 def link(text,url):return f'<a href="{url}" color="#176d92">{text}</a>'
 repo='https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0'
 
-title(1,'Start on a new Linux PC')
-p('<b>Guide revision 0.3 - 12 October 2026.</b> For the IPT <b>v2.1.01</b> maintenance release. Download its archive and matching checksum list together. The original v2.1.00 remains available separately. This guide is the checklist for the next clean installation, not a claim that the clean retest is already complete.')
-note('A new PC starts here. To repeat the installation on a previously used PC, prepare a recoverable clean profile using page 7 first. Keep the pedal unplugged until step 10. Run one command block at a time and stop if its checkpoint fails.')
+title(1,'One installer for Linux')
+p('<b>Guide revision 0.4 - 12 October 2026.</b> Recommended setup for <b>IPT v2.1.01</b> on Fedora with dnf or Ubuntu/Debian with apt. The installer chooses x64 or ARM64 automatically. Atomic/immutable editions and other distributions need a separate setup method.')
+note('Keep the pedal unplugged and close IPT. For an existing test PC, back up and reset its profile using page 8 first. Your music stays in its existing local or NAS folder.')
+h('A. Download the installer')
+p('Open '+link('the v2.1.01 release',repo+'/releases/tag/v2.1.01')+' in your web browser. Download <b>Install-IPT-Linux.sh</b> into Downloads. The script fetches and verifies the matching native package, so you do not need to extract an archive yourself.')
+h('B. Run one command')
+p('Open Terminal/Konsole and paste:')
+code('bash "$HOME/Downloads/Install-IPT-Linux.sh"')
+p('Run this as your normal Linux user. Enter your Linux password at the sudo prompt; characters stay hidden. Do not put sudo in front of the installer command. An internet connection is required.')
+h('C. Wait for the seven stages')
+p('Setup installs any missing native VLC/Python/curl requirements, downloads and verifies IPT, installs USB rules, installs or locates PlatformIO Core, installs IPT and its menu entry, checks VLC playback, and builds both firmware and filesystem. KDE users also get Places/NAS helpers. VS Code and Arduino IDE are not required.')
+p('Initial ESP32 tools and library downloads can take several minutes. Build checks use the clean downloaded firmware and never upload to or erase the pedal. Existing projects, presets, captures, backups and settings are preserved.')
+note('<b>Checkpoint:</b> wait for <b>SETUP COMPLETE</b>. If any stage fails, keep the error and the log path printed below it, fix the reported problem, then rerun the same command. Logs are saved under ~/.local/state/ignitron-preset-tools/setup by default.')
+h('D. Open IPT and continue on page 5')
+p('Launch <b>Ignitron Preset Tools</b> from the application menu, usually under Multimedia. Review OLED, battery and hardware settings before connecting and flashing the pedal. You will test audible backing-track playback and USB features after setup.')
+h('Preview or manual alternative')
+code('bash "$HOME/Downloads/Install-IPT-Linux.sh" --check')
+p('This prints the setup plan without installing or downloading anything. Pages 2-4 document the manual alternative. The native v2.1.01 archives still contain the earlier manual guide; this revised PDF accompanies the new standalone online installer.')
+
+title(2,'Manual setup: prerequisites')
+p('<b>Manual alternative.</b> If you used the all-in-one installer on page 1 successfully, skip to page 5. The commands on pages 2-4 are for installing each prerequisite and the application separately.')
+note('For a manual installation, keep the pedal unplugged until step 10. Run one command block at a time and stop if its checkpoint fails.')
 h('1. Check the system')
 code('cat /etc/os-release\nuname -m\npython3 --version\ncommand -v curl\ncommand -v vlc')
 p('<b>x86_64:</b> choose Linux-x64. <b>aarch64:</b> choose Linux-arm64. The hardware walkthrough uses Fedora KDE x64. Ubuntu/Debian alternatives below and ARM64 packages require their own end-to-end validation.')
@@ -50,10 +69,10 @@ code('sudo dnf install curl python3 vlc')
 p('<b>Ubuntu/Debian:</b>')
 code('sudo apt update\nsudo apt install curl python3 python3-venv vlc')
 p('If VLC is already installed, the package manager confirms it. Open <b>VLC</b> from the menu, finish its first-run dialog and close it. Use the distribution package: a Flatpak-only VLC installation may not expose libVLC to IPT.')
-p('VLC supplies backing-track playback. PlatformIO Core supplies firmware build/upload tools. <b>VS Code and Arduino IDE are not required.</b> IPT includes its own Python/Tk runtime; system Python is used to install PlatformIO. The IPT installer itself does not install these prerequisites.')
+p('VLC supplies backing-track playback. PlatformIO Core supplies firmware build/upload tools. <b>VS Code and Arduino IDE are not required.</b> IPT includes its own Python/Tk runtime; system Python is used to install PlatformIO. The archive app-only installer does not install these prerequisites; the all-in-one installer on page 1 does.')
 p('<b>Checkpoint:</b> the architecture is known, Python/curl work and VLC opens. A sudo password prompt expects your Linux account password; characters are hidden as you type.')
 
-title(2,'Install PlatformIO and USB rules')
+title(3,'Install PlatformIO and USB rules')
 h('3. Install PlatformIO Core as your normal user')
 code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\npio_url="https://raw.githubusercontent.com/platformio"\ncurl -fsSL -o get-platformio.py \\\n  "$pio_url/platformio-core-installer/master/get-platformio.py"\npython3 get-platformio.py\n"$HOME/.platformio/penv/bin/platformio" --version')
 p('Do not use sudo for this installer. The final command must print a PlatformIO Core version. The standard executable location is <b>~/.platformio/penv/bin/platformio</b>; IPT checks that location automatically.')
@@ -65,7 +84,7 @@ p('<b>Checkpoint:</b> PlatformIO prints its version and the rule installation co
 h('Official instructions')
 p(link('PlatformIO Core installer','https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html')+'<br/>'+link('PlatformIO Linux USB permissions','https://docs.platformio.org/en/latest/core/installation/udev-rules.html')+'<br/>'+link('Fedora VLC package','https://packages.fedoraproject.org/pkgs/vlc/vlc/'))
 
-title(3,'Download and install the release')
+title(4,'Download and install the release')
 h('5. Download the updated archive and checksums')
 p('Open '+link('the v2.1.01 release',repo+'/releases/tag/v2.1.01')+' and confirm the version is <b>v2.1.01</b>. Avoid an earlier saved ZIP or GitHub Actions artifact. The commands below fetch the public release into a new folder.')
 code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\nipt_download=$(mktemp -d "$PWD/ipt-2.1.01-download.XXXXXX")\ncd "$ipt_download"\nrelease_url="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0"\nrelease_url="$release_url/releases/download/v2.1.01"\narchive="Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz"\ncurl -fL -o "$archive" "$release_url/$archive"\ncurl -fL -o SHA256SUMS.txt "$release_url/SHA256SUMS.txt"\nsha256sum --ignore-missing -c SHA256SUMS.txt')
@@ -76,9 +95,9 @@ code('tar -xzf "$archive"\ncd "Ignitron Preset Tools v2.1.01 Linux-x64"\nsh ./in
 p('Expected: <b>Installed Ignitron Preset Tools for this user.</b> The app appears in the menu, typically under Multimedia. Default location: ~/.local/share/ignitron-preset-tools. The launcher is ~/.local/bin/ignitron-preset-tools. A custom XDG_DATA_HOME changes the data location.')
 h('7. Check VLC, then launch IPT')
 code('"$HOME/.local/bin/ignitron-preset-tools" --vlc-self-test\n"$HOME/.local/bin/ignitron-preset-tools" --vlc-audio-self-test')
-p('Both tests must pass. The second uses the real audio backend with a silent WAV; you will verify audible playback on page 5. Open <b>Ignitron Preset Tools</b> from the application menu. If the menu entry is missing, run the launcher path above without a self-test argument.')
+p('Both tests must pass. The second uses the real audio backend with a silent WAV; you will verify audible playback on page 6. Open <b>Ignitron Preset Tools</b> from the application menu. If the menu entry is missing, run the launcher path above without a self-test argument.')
 
-title(4,'Configure and flash the pedal')
+title(5,'Configure and flash the pedal')
 h('8. Review the firmware project and hardware')
 p('Dashboard should use <b>~/.local/share/ignitron-preset-tools/ignitron firmware</b>. The separate <b>Ignitron 1.9.0</b> folder is the older fallback. Under <b>Firmware &gt; Show setup</b>, confirm PlatformIO, environment <b>esp32dev</b> and upload speed <b>460800</b>. If PlatformIO is missing, browse to ~/.platformio/penv/bin/platformio.')
 p('Match the OLED driver, battery type/cells, GPIO and other settings to your own pedal. The supplied default is SH1106 1.3-inch. Our earlier test used SSD1309 2.42-inch and two-cell Li-ion, which is not a universal default. Editing the firmware version label alone does not add firmware features.')
@@ -87,13 +106,13 @@ p('Uncheck <b>Allow filesystem upload when PresetList.txt references missing JSO
 h('10. Connect USB directly')
 p('Use a data-capable USB cable directly to the PC for the first test. Confirm the USB detection prompt and choose the matching port, commonly <b>/dev/ttyUSB0 | CP2102</b>. A bad hub caused intermittent detection during our earlier test. Close any other serial monitor.')
 code('"$HOME/.platformio/penv/bin/platformio" device list')
-p('<b>Checkpoint:</b> the port appears in both PlatformIO and IPT. If it does not, use the troubleshooting checks on page 6 before flashing.')
+p('<b>Checkpoint:</b> the port appears in both PlatformIO and IPT. If it does not, use the troubleshooting checks on page 7 before flashing.')
 h('11. Build and flash through IPT')
 p('End any Remote or Capture connection. Leave <b>Erase flash before upload</b> unchecked unless you intentionally need a full erase. Click <b>Build + Flash FW + FS</b>. It saves the displayed settings, downloads missing ESP32 tools/libraries, and builds firmware and filesystem before any requested erase. It then uploads both.')
 note('Internet is required for the first build. Downloading dependencies here is normal; a separate terminal build is not required. A filesystem upload replaces the pedal data with the selected project data. Wait until the entire firmware and filesystem sequence reports success.')
 p('<b>Checkpoint:</b> the pedal restarts with the expected screen, version and controls, and connects to the Spark amp. Keep the full build log if any stage fails; a successful firmware stage alone is not a successful combined update.')
 
-title(5,'Check the features one at a time')
+title(6,'Check the features one at a time')
 h('12. Backing Tracks: test a local folder first')
 p('Open <b>Backing Tracks</b>. Choose a local folder containing a known audio file. Test play, pause, seek, stop and volume while stopped and while playing. Try search and favorites. Close and reopen IPT and confirm the folder and favorites are remembered. This feature does not require the pedal or a NAS.')
 h('13. Optional NAS music on KDE')
@@ -107,9 +126,9 @@ p('Names that collide receive numbered filenames; identical repeats are skipped.
 h('16. Preset Builder')
 p('Load a preset library, arrange a small bank and export to a separate test output folder. Inspect the JSON files, lists and generated PDF. Exporting does not change the pedal until you explicitly upload the filesystem. Keep custom presets and capture backups before reorganizing a library.')
 
-title(6,'If a checkpoint fails')
+title(7,'If a checkpoint fails')
 h('Installation or playback')
-p('<b>install_linux.sh not found:</b> change into the extracted package folder, then run sh ./install_linux.sh.<br/><b>Missing PlatformIO:</b> run its full-path version check from page 2, restart IPT, and select the executable in Firmware setup.<br/><b>Missing VLC:</b> install the native VLC package from page 1 and restart IPT. If VLC opens but IPT playback fails, retain both self-test outputs and test a local WAV file.')
+p('<b>install_linux.sh not found:</b> change into the extracted package folder, then run sh ./install_linux.sh.<br/><b>Missing PlatformIO:</b> run its full-path version check from page 3, restart IPT, and select the executable in Firmware setup.<br/><b>Missing VLC:</b> install the native VLC package from page 2 and restart IPT. If VLC opens but IPT playback fails, retain both self-test outputs and test a local WAV file.')
 h('USB or capture')
 code('"$HOME/.platformio/penv/bin/platformio" device list\nls -l /dev/ttyUSB0\nid -nG\nfuser -v /dev/ttyUSB0')
 p('Replace ttyUSB0 with the reported port. <b>No port:</b> try a direct USB port and another data cable. <b>Permission denied:</b> reinstall/reload the udev rules and reconnect. If using a serial-access group instead, identify the actual device group and sign out/in after adding membership. <b>Busy:</b> close the named process or serial monitor normally. Do not run IPT as root.')
@@ -122,7 +141,7 @@ code('"$HOME/.local/bin/ignitron-preset-tools" 2>&1 | tee "$HOME/ipt-test.log"')
 p('Record the failing guide step, action, expected result, actual result and exact error. Include OS/architecture, release SHA256 and amp model. For a native crash, <b>coredumpctl info</b> can identify the fault. Check logs/screenshots for private paths or credentials before posting.')
 p('Fixes and issues can be handled entirely from this Linux PC through '+link('the GitHub project',repo)+'. The original development PC is not required. Test the published package as well as source code before marking a problem resolved.')
 
-title(7,'Repeat with a clean app profile')
+title(8,'Repeat with a clean app profile')
 p('<b>For an existing test PC only.</b> This is a recoverable reset of the IPT profile and PlatformIO installation. It does not reinstall Linux or remove global packages. For a strictly new-OS test, use a clean Linux installation with USB access instead.')
 h('A. Back up before changing anything')
 p('End all IPT connections, close IPT and unplug the pedal. Copy any custom firmware projects or music stored outside the default IPT folder separately. Keep the saved paths/checksum record from this test. The commands below assume default XDG locations; inspect custom XDG variables before proceeding.')
@@ -133,16 +152,16 @@ code('if [ -d "$data_home/ignitron-preset-tools" ]; then\n  mv "$data_home/ignit
 p('The old launcher/menu entry temporarily points to a moved app; the new installer replaces it. Other PlatformIO projects also lose access to that moved toolchain until installation or restoration. Do not restore settings until the clean test finishes.')
 p('To include the <b>missing VLC and missing USB-rules</b> cases, do a separate reviewed removal of those system prerequisites, or use a clean OS. Do not remove shared packages blindly. Then start at page 1. This guide does not use the old destructive uninstaller.')
 
-title(8,'Record the result and recover')
+title(9,'Record the result and recover')
 h('Clean-install checklist')
 for text in [
 '1. OS, architecture and release archive SHA256 recorded.',
 '2. Python/curl and native VLC installed or found; VLC opens.',
-'3. PlatformIO version check and USB rules complete.',
+'3. PlatformIO and USB rules complete; all-in-one setup reports SETUP COMPLETE.',
 '4. Release checksum passes; installer and application-menu launch work.',
 '5. Both packaged VLC self-tests pass; local audio is audible.',
 '6. Correct hardware settings and data validation confirmed.',
-'7. First build downloads dependencies; firmware and filesystem uploads succeed.',
+'7. Firmware and filesystem uploads succeed after reviewing hardware settings.',
 '8. Remote connects, identifies the amp and changes presets without hover selection.',
 '9. Capture saves phone presets; ending Capture returns the pedal to APP mode.',
 '10. Listed/full-library backups contain readable JSON and report completion.',
@@ -151,7 +170,7 @@ for text in [
 h('Upgrade and uninstall behavior in v2.1.01')
 p('Installing again updates the application and bundled templates while preserving working firmware projects, presets, captures and backups. The new uninstaller removes the app but retains working data and settings. Its <b>--purge</b> option deliberately deletes working data as well, so it is not the preferred clean-test procedure. Old extracted installers/uninstallers may still be destructive; use the v2.1.01 package.')
 h('Recovery after the clean test')
-p('Close IPT. Keep the newly tested data/profile under a different backup name, then restore the original-app-data and original-settings folders from page 7 to their previous locations. Restore original-platformio only if you need the previous toolchain/cache. Never merge folders over one another without reviewing conflicts. This is not needed for a successful first installation.')
+p('Close IPT. Keep the newly tested data/profile under a different backup name, then restore the original-app-data and original-settings folders from page 8 to their previous locations. Restore original-platformio only if you need the previous toolchain/cache. Never merge folders over one another without reviewing conflicts. This is not needed for a successful first installation.')
 h('Validation scope')
 p('Earlier Fedora 44 x64 testing confirmed flashing, real backing-track playback, NAS library access, Remote operations and phone preset capture. The v2.1.01 release also has automated regressions and native CI packaging. Hardware-specific features such as Spark 2 looper/battery telemetry require the corresponding amp. A passing software test cannot certify every Linux distribution, USB adapter or pedal.')
 p('Record pass/fail against this exact revised guide. Keep any failures open until the downloaded release passes the same action on this PC. Update the guide when the steps or behavior change.')
@@ -160,7 +179,7 @@ p(link('Release and checksums',repo+'/releases/tag/v2.1.01')+' | '+link('Report 
 def footer(c,doc):
     c.setStrokeColor(colors.HexColor('#e2e7ec'));c.line(42,40,570,40)
     c.setFont('Guide',8);c.setFillColor(colors.HexColor('#637083'))
-    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.3  |  12 Oct 2026')
+    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.4  |  12 Oct 2026')
     c.drawRightString(570,27,str(doc.page))
 doc=SimpleDocTemplate(str(OUT),pagesize=(612,792),rightMargin=42,leftMargin=42,topMargin=38,bottomMargin=54,title='Ignitron Preset Tools - Linux Installation Guide',author='Ignitron Preset Tools')
 doc.build(story,onFirstPage=footer,onLaterPages=footer)

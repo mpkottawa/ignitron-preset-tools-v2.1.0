@@ -1,5 +1,13 @@
 # Ignitron Preset Tools v2.1.01
 
+## All-in-one Linux setup - 2026-10-12
+
+- Added `Install-IPT-Linux.sh` as a separate online installer for the existing v2.1.01 release, with source in `setup_linux.sh`.
+- Detects Fedora/Ubuntu/Debian and x64/ARM64; installs missing native VLC/Python requirements, PlatformIO Core, USB permissions, IPT, and KDE folder/NAS helpers when applicable.
+- Verifies release checksums, checks both VLC backends, and downloads firmware tools while testing firmware and filesystem builds without uploading to a pedal.
+- Preserves existing data, stops with an actionable log on failure, and supports a read-only `--check` preview.
+- Revised the Linux PDF with a one-file setup route. The original v2.1.01 native archives and tag remain unchanged.
+
 ## Fixes in v2.1.01 - 2026-10-12
 
 This maintenance release follows v2.1.00 with the Linux testing fixes. The application, native archives and bundled current firmware are labelled **2.1.01**. The original v2.1.00 release remains available. Download the archive for your platform and its matching SHA256SUMS.txt.
