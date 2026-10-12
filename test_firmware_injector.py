@@ -759,7 +759,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         page._run_flash_worker()
 
         self.assertEqual(
-            ["clean", "", "erase", "upload", "buildfs", "uploadfs"],
+            ["clean", "", "buildfs", "erase", "upload", "uploadfs"],
             targets,
         )
 
@@ -927,6 +927,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
     def test_capture_handoff_waits_for_previous_connection_to_finish(self):
         import threading
         app = object.__new__(IPT.IgnitronApp)
+        app.pages = {}
         previous = SimpleNamespace(running=True, tool_title="Remote", stop_serial=mock.Mock())
         page = SimpleNamespace(stop_event=threading.Event(), tool_title="Capture", finish=mock.Mock())
         app.active_serial_page = previous
@@ -949,6 +950,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
     def test_capture_handoff_can_be_cancelled_before_opening_usb(self):
         import threading
         app = object.__new__(IPT.IgnitronApp)
+        app.pages = {}
         app.active_serial_page = None
         app.update_global_usb_status = mock.Mock()
         pending = []

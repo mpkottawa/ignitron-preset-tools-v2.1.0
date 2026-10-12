@@ -92,7 +92,7 @@ source = Image.open(Path(os.environ["ROOT"]) / "IPT.ico").convert("RGBA")
 source.resize((256, 256), Image.Resampling.LANCZOS).save(Path(os.environ["DIST_PACKAGE"]) / "ipt.png")
 PY
 fi
-for document in README.md FIRMWARE.md RELEASE_NOTES.md GITHUB_RELEASE.md LICENSE; do
+for document in README.md FIRMWARE.md RELEASE_NOTES.md GITHUB_RELEASE.md LICENSE Linux-Install-Guide.pdf; do
   [[ -f "$ROOT/$document" ]] && cp "$ROOT/$document" "$DIST_PACKAGE/$document"
 done
 if [[ -d "$FIRMWARE_SOURCE" ]]; then

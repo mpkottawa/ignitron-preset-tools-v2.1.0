@@ -22,6 +22,7 @@ import tkinter as tk
 import wave
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from preset_capture import PresetCaptureDecoder, save_captured_preset
 
 try:
     from PIL import Image, ImageTk
@@ -281,7 +282,8 @@ def settings_file():
 
 def load_settings():
     try:
-        return json.loads(settings_file().read_text(encoding="utf-8"))
+        data = json.loads(settings_file().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
@@ -289,7 +291,16 @@ def load_settings():
 def save_settings(data):
     path = settings_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".settings-", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump(data, output, indent=2)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def update_settings(**updates):
@@ -2517,6 +2528,12 @@ class IgnitronApp(tk.Tk):
             show_setup()
 
     def request_serial_start(self, page, on_ready=None):
+        firmware = self.pages.get("firmware")
+        if firmware is not page and getattr(firmware, "running", False):
+            page.append_log("Firmware or serial monitor is using USB. Finish or stop that task before connecting.\n")
+            self.set_status("USB is in use by Firmware")
+            page.finish()
+            return
         selected_port = getattr(page, "selected_port", None)
         if callable(selected_port):
             self.apply_serial_port(selected_port(), save_platformio=True)
@@ -2524,8 +2541,6 @@ class IgnitronApp(tk.Tk):
         if previous and previous is not page and getattr(previous, "running", False):
             previous.stop_serial(f"{page.tool_title} started")
             self.set_status(f"Stopped {previous.tool_title}; starting {page.tool_title}")
-            if on_ready is None:
-                time.sleep(0.25)
         self.active_serial_page = page
         self.update_global_usb_status()
         if on_ready is not None:
@@ -2964,10 +2979,15 @@ class BuilderPage(Page):
         update_settings(preset_library_folder=self.library_folder)
         self.presets = []
         for path in sorted(self.library_folder.rglob("*.json"), key=lambda p: p.name.lower()):
+            if any(part in {"_ipt_backups", "_ipt_duplicate_backups"}
+                   for part in path.relative_to(self.library_folder).parts):
+                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
             except Exception:
-                data = {}
+                continue
+            if not isinstance(data, dict) or not isinstance(data.get("Pedals"), list):
+                continue
             self.presets.append({
                 "filename": path.name,
                 "name": str(data.get("Name", path.stem)),
@@ -3269,6 +3289,15 @@ class BuilderPage(Page):
             self.choose_output_folder()
         if not self.output_folder:
             return False
+        selected = {name for name in self.slots.values() if name}
+        by_filename = {}
+        for preset in self.presets:
+            name = preset["filename"]
+            if name in selected and name in by_filename and preset["data"] != by_filename[name]["data"]:
+                messagebox.showerror("Ambiguous preset filename",
+                    f"Different presets share the filename {name}. Choose a library folder with unique filenames before exporting.")
+                return False
+            by_filename[name] = preset
         self.output_folder.mkdir(parents=True, exist_ok=True)
         backup_root = self.output_folder / "_ipt_backups"
         backed_up = []
@@ -3305,6 +3334,10 @@ class BuilderPage(Page):
                             and source_path.exists()
                             and source_path.resolve() != destination.resolve()
                         ):
+                            if destination.exists() and source_path.read_bytes() != destination.read_bytes():
+                                backup = backup_file(destination, backup_root)
+                                if backup:
+                                    backed_up.append(backup)
                             shutil.copy2(source_path, destination)
                             copied_files.add(source_path.name)
                             copied += 1
@@ -5845,7 +5878,7 @@ class FirmwareUploadPage(Page):
         self.load_project_defaults()
 
     def bundled_firmware_dir(self):
-        return first_resource_path(*FIRMWARE_FOLDER_NAMES)
+        return first_resource_path("firmware templates/ignitron firmware", *FIRMWARE_FOLDER_NAMES)
 
     def _write_ipt_setup_log(self, text):
         log = getattr(self, "ipt_setup_log", None)
@@ -6684,6 +6717,10 @@ class FirmwareUploadPage(Page):
             messagebox.showinfo("PresetList PDF not found", f"No PresetList.pdf exists yet at:\n{pdf_path}")
 
     def validate_project(self, check_erase=True):
+        active = self.app.active_serial_page
+        if active and getattr(active, "running", False):
+            messagebox.showinfo("USB is in use", f"End the {active.tool_title} connection before starting a Firmware task.")
+            return False
         if not self.project_dir.exists():
             messagebox.showerror("Project not found", f"Project folder does not exist:\n{self.project_dir}")
             return False
@@ -6859,10 +6896,11 @@ class FirmwareUploadPage(Page):
             # Never erase a working pedal until the selected firmware has
             # compiled successfully.
             targets.append("")
+            targets.append("buildfs")
             if self.erase_var.get():
                 targets.append("erase")
             targets.append("upload")
-            targets.extend(("buildfs", "uploadfs"))
+            targets.append("uploadfs")
 
             for target in targets:
                 code = self._run_platformio_target(target)
@@ -7137,22 +7175,26 @@ class SerialPage(Page):
         self.log.configure(state="disabled")
 
     def start(self):
-        port = self.auto_select_port()
-        if not port:
-            self.connection_state_var.set("No pedal connected")
-            messagebox.showinfo(
-                "No pedal connected",
-                "No Ignitron pedal answered over USB. Connect the ESP32 pedal, then try again.",
-            )
-            return
         if self.running:
             return
-        self.app.request_serial_start(self)
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
         self.running = True
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
-        self.update_connection_indicator(True)
-        threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        self.app.request_serial_start(
+            self, on_ready=lambda: threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        )
+
+    def serial_connected(self, port):
+        if not self.stop_event.is_set():
+            self.app.remember_serial_port(port, verified=True)
+            self.update_connection_indicator(True)
 
     def stop_serial(self, reason="another serial tool started"):
         if not self.running:
@@ -7301,6 +7343,8 @@ class TunerPage(SerialPage):
         connection = None
         try:
             connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            self.after(0, self.serial_connected, port)
             connection.write(b"TUNERSTREAM ON\n")
             while self.winfo_exists() and not self.stop_event.is_set():
                 line = connection.readline().decode(errors="ignore").strip()
@@ -7498,6 +7542,8 @@ class DisplayMirrorPage(SerialPage):
         connection = None
         try:
             connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            self.after(0, self.serial_connected, port)
             connection.write(b"MIRROR ON\n")
             while self.winfo_exists() and not self.stop_event.is_set():
                 line = connection.readline().decode(errors="ignore").strip()
@@ -8253,14 +8299,15 @@ class PedalRemotePage(SerialPage):
         if not port or "Not connected" in self.port_var.get():
             messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
             return
-        self.app.request_serial_start(self)
         self.running = True
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.update_connection_indicator(False)
         self.connection_state_var.set("Connecting...")
-        threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        self.app.request_serial_start(
+            self, on_ready=lambda: threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        )
 
     def remote_connected(self, port):
         if self.stop_event.is_set():
@@ -8822,7 +8869,7 @@ class CapturePage(SerialPage):
                  bg=CARD, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 0))
         actions = tk.Frame(backup, bg=CARD)
         actions.pack(side="right", padx=16, pady=13)
-        self.pull_active_button = ttk.Button(actions, text="Pull active bank", style="Dark.TButton",
+        self.pull_active_button = ttk.Button(actions, text="Pull listed presets", style="Dark.TButton",
                                              command=lambda: self.start_backup(True))
         self.pull_active_button.pack(side="left", padx=(0, 8))
         self.pull_all_button = ttk.Button(actions, text="Pull full library", style="Gold.TButton",
@@ -8885,7 +8932,7 @@ class CapturePage(SerialPage):
         self.set_action_state("normal")
 
     def run_backup(self, port, active_only):
-        scope = "active bank" if active_only else "full preset library"
+        scope = "presets listed in PresetList.txt" if active_only else "full preset library"
         self.append_log(f"Starting {scope} backup from {port}...\n")
         mode_connection = None
         capture_mode_entered = False
@@ -8893,8 +8940,6 @@ class CapturePage(SerialPage):
             mode_connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
             self.after(0, self.capture_connected, port)
-            mode_connection.close()
-            mode_connection = None
             backup_root = self.app.project_dir / "backups"
             backup_root.mkdir(parents=True, exist_ok=True)
             self.append_log(f"Saving backups to {backup_root}\n")
@@ -8906,7 +8951,7 @@ class CapturePage(SerialPage):
             with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
                 module.pull_presets(
                     port, 115200, active_only, False, backup_root, self.stop_event,
-                    capture_keepalive=True,
+                    capture_keepalive=True, connection=mode_connection,
                 )
             if self.stop_event.is_set():
                 self.append_log("\nBackup stopped.\n")
@@ -8915,17 +8960,20 @@ class CapturePage(SerialPage):
                 self.append_log("\nBackup complete.\n")
                 open_folder(backup_root)
                 self.app.set_status("Pedal backup completed")
+        except InterruptedError:
+            self.append_log("\nBackup stopped.\n")
+            self.after(0, self.app.set_status, "Pedal backup stopped")
         except Exception as exc:
             self.append_log(f"\nBackup failed: {exc}\n")
             self.app.set_status("Pedal backup failed")
         finally:
+            if capture_mode_entered and mode_connection:
+                self._return_to_app_mode(connection=mode_connection)
             try:
                 if mode_connection:
                     mode_connection.close()
             except Exception:
                 pass
-            if capture_mode_entered:
-                self._return_to_app_mode(port=port)
             self.after(0, self.finish)
 
     def _enter_capture_amp_mode(self, port):
@@ -9064,21 +9112,20 @@ class CapturePage(SerialPage):
 
     def run_tool(self, port):
         self.append_log(f"Preparing Spark Capture on {port} at 115200 baud...\n")
-        session = self.app.project_dir / "captures" / time.strftime("presets_%Y%m%d_%H%M%S")
-        session.mkdir(parents=True, exist_ok=True)
-        self.append_log(f"Saving captures to {session}\n\n")
         connection = None
         capture_mode_entered = False
         detected_serial_end = False
         try:
+            capture_root = self.app.project_dir / "captures"
+            capture_root.mkdir(parents=True, exist_ok=True)
+            session = Path(tempfile.mkdtemp(prefix=time.strftime("presets_%Y%m%d_%H%M%S_"), dir=capture_root))
+            self.append_log(f"Saving captures to {session}\n\n")
             connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
             self.after(0, self.capture_connected, port)
             connection.timeout = 0.5
             self.append_log("Listening for presets from the Spark app...\n\n")
-            buffer = ""
-            capturing = False
-            last_uuid = None
+            decoder = PresetCaptureDecoder()
             next_keepalive = 0.0
             expected_restart_until = 0.0
             while self.winfo_exists() and not self.stop_event.is_set():
@@ -9088,6 +9135,8 @@ class CapturePage(SerialPage):
                     next_keepalive = time.monotonic() + 2.0
                 line = connection.readline().decode(errors="ignore").rstrip()
                 if not line:
+                    continue
+                if line == "OK CAPTUREKEEPALIVE" or line.startswith("IGNITRON_FLASHER "):
                     continue
                 self.append_log(line + "\n")
                 upper = line.upper()
@@ -9102,29 +9151,16 @@ class CapturePage(SerialPage):
                     break
                 if "CAPTUREMODE AUTO AMP (ONE SHOT)" in upper:
                     expected_restart_until = 0.0
-                if line == "OK CAPTUREKEEPALIVE":
-                    continue
-                if line.startswith("received from app:") or line.startswith("JSON STRING:"):
-                    buffer = ""
-                    capturing = True
-                    continue
-                if capturing:
-                    buffer += line + "\n"
-                    if line.strip().endswith("}"):
-                        capturing = False
-                        try:
-                            preset = json.loads(buffer)
-                            uuid = preset.get("UUID")
-                            if uuid == last_uuid:
-                                continue
-                            last_uuid = uuid
-                            name = re.sub(r"[^A-Za-z0-9_-]+", "", str(preset.get("Name", "preset"))) or "preset"
-                            output = session / f"{name}.json"
-                            output.write_text(json.dumps(preset, indent=2), encoding="utf-8")
+                try:
+                    preset = decoder.feed(line)
+                    if preset is not None:
+                        output, created = save_captured_preset(session, preset)
+                        if created:
                             self.append_log(f"SAVED: {output.name}\n")
-                            self.app.set_status(f"Captured {output.name}")
-                        except Exception as exc:
-                            self.append_log(f"Could not parse preset: {exc}\n")
+                            self.after(0, self.app.set_status, f"Captured {output.name}")
+                except (ValueError, OSError) as exc:
+                    self.append_log(f"Could not save preset: {exc}\n")
+                    self.after(0, self.app.set_status, f"Capture save failed: {exc}")
             if not detected_serial_end:
                 self.append_log("\nSpark capture connection ended.\n")
                 self.after(0, self.app.set_status, "Spark capture stopped")

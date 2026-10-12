@@ -44,6 +44,8 @@ Extract it and move `Ignitron Preset Tools v2.1.00.app` to Applications. Unsigne
 
 ### Linux
 
+Follow [the step-by-step Linux installation PDF](Linux-Install-Guide.pdf) for the 2026-10-12 Linux fixes rebuild. The guide includes exact download/checksum commands, first-run prerequisites, local music and optional NAS setup, and a recoverable clean-retest procedure.
+
 The IPT installer installs the desktop application and the two firmware projects for the current user. It **does not install PlatformIO Core or VLC**. Install those system prerequisites first.
 
 Fedora:
@@ -65,13 +67,13 @@ Download the archive matching the computer. For an x64 download in the normal Do
 
 ```bash
 cd "$HOME/Downloads"
-tar -xzf "Ignitron Preset Tools v2.1.00 Linux-x64.tar.gz"
+tar -xzf "Ignitron.Preset.Tools.v2.1.00.Linux-x64.tar.gz"
 cd "Ignitron Preset Tools v2.1.00 Linux-x64"
 chmod +x install_linux.sh
 ./install_linux.sh
 ```
 
-For ARM64, use `Linux-arm64` in the archive and directory names. The installer copies IPT to `~/.local/share/ignitron-preset-tools`, adds an application-menu entry, and creates `~/.local/bin/ignitron-preset-tools`. It deliberately keeps user settings when `uninstall_linux.sh` is later used. Do not run IPT or its installer as root.
+For ARM64, use `Linux-arm64` in the archive and directory names. The installer copies IPT to `~/.local/share/ignitron-preset-tools`, adds an application-menu entry, and creates `~/.local/bin/ignitron-preset-tools`. Upgrades preserve existing firmware projects, presets, captures and backups. Fresh firmware templates are installed separately for the IPT Setup actions. Close IPT before upgrading. The uninstaller removes the app but keeps working projects and settings; `./uninstall_linux.sh --purge` explicitly deletes the working projects, captures and backups too (settings remain). Do not run IPT or its installer as root.
 
 #### Install PlatformIO Core
 
@@ -134,7 +136,7 @@ Open IPT and select the installed current project:
 
 This is the IPT v2.1.00 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
 
-Before the first physical flash, prove that both firmware and filesystem compile without touching the pedal:
+For optional troubleshooting, build firmware and filesystem without uploading to the pedal:
 
 ```bash
 cd "$HOME/.local/share/ignitron-preset-tools/ignitron firmware"
@@ -142,7 +144,7 @@ cd "$HOME/.local/share/ignitron-preset-tools/ignitron firmware"
 "$HOME/.platformio/penv/bin/platformio" run -e esp32dev -t buildfs
 ```
 
-Both commands must finish with `SUCCESS`. Then return to IPT, review the OLED/battery/hardware settings, confirm the USB port, and click **Build + Flash FW + FS**. The combined action saves the displayed settings before it builds and uploads.
+These terminal checks are optional diagnostics; **Build + Flash FW + FS** runs both builds before any requested erase. If you run the checks separately, both must finish with `SUCCESS`. Then return to IPT, review the OLED/battery/hardware settings, confirm the USB port, and click **Build + Flash FW + FS**. The combined action saves the displayed settings before it builds and uploads.
 
 #### Linux troubleshooting
 
@@ -192,7 +194,7 @@ For the normal v2.1.00 setup, select the bundled `ignitron firmware` folder (`Ig
 
 The persistent **Pedal USB** control in the very top-right of the page header is the single serial-port selector for the whole app. IPT watches for newly connected USB serial devices and asks whether the detected device is the Ignitron pedal. Confirming a port applies it immediately to Firmware, Pedal Remote, Spark Capture, and every other serial tool, then writes `upload_port` to the selected/default PlatformIO environment. The status indicator shows **Disconnected**, **USB ready**, or **Connected**. Use **Scan USB** or choose a different port manually at any time.
 
-The main button first applies the displayed firmware version and every selected **Apply on Save / Flash** settings group, then reads the project configuration back and verifies it before PlatformIO starts. A mismatch stops the flash instead of compiling stale settings. It also writes the selected environment/port/speed to `platformio.ini`, optionally cleans and erases, uploads firmware, builds the filesystem, and uploads filesystem data. The reliable default upload speed is `460800`; serial control features use `115200`.
+The main button first applies the displayed firmware version and every selected **Apply on Save / Flash** settings group, then reads the project configuration back and verifies it before PlatformIO starts. A mismatch stops the flash instead of compiling stale settings. It also writes the selected environment/port/speed to `platformio.ini`, optionally cleans, builds both firmware and filesystem, then optionally erases and uploads firmware and filesystem data. The reliable default upload speed is `460800`; serial control features use `115200`.
 
 The release firmware includes its prepared preset library. You can replace or reorganize it in **Preset Builder** before a filesystem upload. The bundled 1.9.0 folder is kept separate so current changes never overwrite the fallback unless you explicitly select and edit it.
 
@@ -229,8 +231,9 @@ The release firmware includes its prepared preset library. You can replace or re
 Spark Capture requests one-shot AMP mode in software. The request is consumed on the capture boot. Ending capture, losing the USB heartbeat, holding the normal reset control, or power-cycling returns the pedal to normal APP mode.
 
 - Capture presets sent by the Spark app.
-- Pull the active pedal bank or full pedal library.
-- Save unique presets as JSON in a timestamped backup folder.
+- Pull the presets referenced by the pedal's PresetList.txt, or its full preset library. **Pull listed presets** includes every listed bank; it is not limited to the four slots currently selected on the pedal.
+- Save presets as JSON in a timestamped capture folder. Different presets with the same name receive a filename suffix; edited versions of the same UUID are preserved. Repeated identical captures are skipped.
+- Capture startup verifies the pedal in the background. End Connection cancels startup or exits temporary AMP mode. Routine heartbeat replies are hidden from the activity log.
 
 ### Backing Tracks
 
