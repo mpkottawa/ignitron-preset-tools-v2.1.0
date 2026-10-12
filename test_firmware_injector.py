@@ -821,10 +821,10 @@ class CrossPlatformReleaseTests(unittest.TestCase):
     def test_serial_handshake_retries_through_boot_without_closing(self):
         clock = [0.0]
         connection = mock.Mock()
-        def read():
+        def read(**_kwargs):
             clock[0] += 0.2
             return b"BOOT 90 WAITING_FOR_AMP\n" if clock[0] < 2 else b"IGNITRON_FLASHER 1\n"
-        connection.readline.side_effect = read
+        connection.read_until.side_effect = read
         with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
             IPT.verify_ignitron_connection(connection)
         self.assertGreaterEqual(connection.write.call_count, 2)
@@ -834,10 +834,10 @@ class CrossPlatformReleaseTests(unittest.TestCase):
     def test_serial_handshake_rejects_generic_initializing_messages(self):
         clock = [0.0]
         connection = mock.Mock()
-        def read():
+        def read(**_kwargs):
             clock[0] += 0.2
             return b"Initializing some other device\n"
-        connection.readline.side_effect = read
+        connection.read_until.side_effect = read
         with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
             with self.assertRaisesRegex(TimeoutError, "no Ignitron PING reply"):
                 IPT.verify_ignitron_connection(connection, timeout=1)
@@ -893,6 +893,141 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         page.send_remote_serial_line.assert_called_once_with("HWINFO")
         connection.close.assert_called_once()
         page.handle_detected_serial_end.assert_not_called()
+
+    def test_capture_connect_and_backup_do_not_probe_on_the_gui_thread(self):
+        import threading
+        for active_only in (None, True, False):
+            with self.subTest(active_only=active_only):
+                page = object.__new__(IPT.CapturePage)
+                page.running = False
+                page.stop_event = threading.Event()
+                page.port_var = SimpleNamespace(get=lambda: "/dev/test")
+                page.selected_port = lambda: "/dev/test"
+                for name in ("refresh_ports", "update_connection_indicator", "set_action_state",
+                             "run_tool", "run_backup", "auto_select_port"):
+                    setattr(page, name, mock.Mock())
+                page.start_button = mock.Mock()
+                page.stop_button = mock.Mock()
+                page.connection_state_var = mock.Mock()
+                page.app = SimpleNamespace(request_serial_start=mock.Mock(), set_status=mock.Mock())
+                with mock.patch.object(IPT, "probe_ignitron_port") as probe, \
+                        mock.patch.object(IPT.threading, "Thread") as worker:
+                    if active_only is None:
+                        page.start()
+                    else:
+                        page.start_backup(active_only)
+                    probe.assert_not_called()
+                    page.auto_select_port.assert_not_called()
+                    worker.assert_not_called()
+                    page.app.request_serial_start.call_args.kwargs["on_ready"]()
+                    worker.return_value.start.assert_called_once()
+                page.update_connection_indicator.assert_called_once_with(False)
+                page.connection_state_var.set.assert_called_with("Connecting...")
+
+    def test_capture_handoff_waits_for_previous_connection_to_finish(self):
+        import threading
+        app = object.__new__(IPT.IgnitronApp)
+        previous = SimpleNamespace(running=True, tool_title="Remote", stop_serial=mock.Mock())
+        page = SimpleNamespace(stop_event=threading.Event(), tool_title="Capture", finish=mock.Mock())
+        app.active_serial_page = previous
+        app.set_status = mock.Mock()
+        app.update_global_usb_status = mock.Mock()
+        pending = []
+        app.after = lambda _delay, callback: pending.append(callback)
+        ready = mock.Mock()
+        with mock.patch.object(IPT.time, "sleep") as sleep:
+            app.request_serial_start(page, on_ready=ready)
+            sleep.assert_not_called()
+        previous.stop_serial.assert_called_once()
+        pending.pop(0)()
+        ready.assert_not_called()
+        previous.running = False
+        pending.pop(0)()
+        ready.assert_called_once()
+        page.finish.assert_not_called()
+
+    def test_capture_handoff_can_be_cancelled_before_opening_usb(self):
+        import threading
+        app = object.__new__(IPT.IgnitronApp)
+        app.active_serial_page = None
+        app.update_global_usb_status = mock.Mock()
+        pending = []
+        app.after = lambda _delay, callback: pending.append(callback)
+        page = SimpleNamespace(stop_event=threading.Event(), finish=mock.Mock())
+        ready = mock.Mock()
+        app.request_serial_start(page, on_ready=ready)
+        page.stop_event.set()
+        pending.pop(0)()
+        ready.assert_not_called()
+        page.finish.assert_called_once()
+
+    def test_capture_verifies_before_requesting_amp_mode_and_reuses_port(self):
+        import threading
+        page = object.__new__(IPT.CapturePage)
+        page.stop_event = threading.Event()
+        page.append_log = mock.Mock()
+        page.after = mock.Mock()
+        page.connection_state_var = mock.Mock()
+        connection = mock.Mock()
+        connection.read_until.return_value = b"OK CAPTUREMODE READY\n"
+        def verify(conn, **kwargs):
+            self.assertIs(connection, conn)
+            connection.write.assert_not_called()
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection) as opener, \
+                mock.patch.object(IPT, "verify_ignitron_connection", side_effect=verify):
+            result = page._enter_capture_amp_mode("/dev/test")
+        self.assertIs(result, connection)
+        opener.assert_called_once()
+        connection.write.assert_has_calls([mock.call(b"CAPTUREMODE\n"), mock.call(b"CAPTUREKEEPALIVE\n")])
+        connection.close.assert_not_called()
+
+    def test_capture_cancel_during_reboot_closes_usb_before_restoring_app_mode(self):
+        import threading
+        page = object.__new__(IPT.CapturePage)
+        page.stop_event = threading.Event()
+        page.append_log = mock.Mock()
+        page.after = mock.Mock()
+        page.connection_state_var = mock.Mock()
+        connection = mock.Mock()
+        def restarting(**kwargs):
+            page.stop_event.set()
+            return b"OK CAPTUREMODE RESTARTING\n"
+        connection.read_until.side_effect = restarting
+        def restore(**kwargs):
+            connection.close.assert_called()
+            self.assertEqual({"port": "/dev/test"}, kwargs)
+        page._return_to_app_mode = mock.Mock(side_effect=restore)
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection), \
+                mock.patch.object(IPT, "verify_ignitron_connection"):
+            with self.assertRaises(InterruptedError):
+                page._enter_capture_amp_mode("/dev/test")
+        page._return_to_app_mode.assert_called_once()
+
+    @unittest.skipUnless(os.name == "posix", "PTY serial fault test")
+    def test_usb_probe_times_out_even_when_input_never_ends_a_line(self):
+        import serial
+        import threading
+        import time
+        master, slave = os.openpty()
+        stop = threading.Event()
+        def noise():
+            while not stop.wait(0.002):
+                os.write(master, b"x" * 256)
+        writer = threading.Thread(target=noise, daemon=True)
+        try:
+            connection = serial.Serial(os.ttyname(slave), timeout=0.08)
+            writer.start()
+            before = time.monotonic()
+            with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection):
+                self.assertFalse(IPT.probe_ignitron_port(SimpleNamespace(device="test"), timeout=0.2))
+            self.assertLess(time.monotonic() - before, 1.0)
+            self.assertFalse(connection.is_open)
+        finally:
+            stop.set()
+            if writer.ident is not None:
+                writer.join(timeout=1)
+            os.close(master)
+            os.close(slave)
 
     def test_auto_detect_does_not_fallback_to_an_unverified_com_port(self):
         stale = SimpleNamespace(

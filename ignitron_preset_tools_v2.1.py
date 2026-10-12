@@ -551,7 +551,7 @@ def verify_ignitron_connection(connection, timeout=6.0, stop_event=None, log=Non
         if now >= next_ping:
             connection.write(b"\nPING\n")
             next_ping = now + 0.5
-        line = connection.readline().decode(errors="replace").strip()
+        line = connection.read_until(size=512).decode(errors="replace").strip()
         if re.match(r"^IGNITRON_FLASHER(?:\s|$)", line):
             if log:
                 log(f"Verified pedal: {line}\n")
@@ -680,7 +680,7 @@ def probe_ignitron_port(port, timeout=0.9):
         deadline = time.time() + timeout
         buffer = ""
         while time.time() < deadline:
-            line = connection.readline().decode(errors="ignore").strip()
+            line = connection.read_until(size=512).decode(errors="ignore").strip()
             if line:
                 buffer += line + "\n"
                 upper = line.upper()
@@ -2516,7 +2516,7 @@ class IgnitronApp(tk.Tk):
         if show_setup:
             show_setup()
 
-    def request_serial_start(self, page):
+    def request_serial_start(self, page, on_ready=None):
         selected_port = getattr(page, "selected_port", None)
         if callable(selected_port):
             self.apply_serial_port(selected_port(), save_platformio=True)
@@ -2524,9 +2524,28 @@ class IgnitronApp(tk.Tk):
         if previous and previous is not page and getattr(previous, "running", False):
             previous.stop_serial(f"{page.tool_title} started")
             self.set_status(f"Stopped {previous.tool_title}; starting {page.tool_title}")
-            time.sleep(0.25)
+            if on_ready is None:
+                time.sleep(0.25)
         self.active_serial_page = page
         self.update_global_usb_status()
+        if on_ready is not None:
+            deadline = time.monotonic() + 8.0
+
+            def wait_for_release():
+                if self.active_serial_page is not page or page.stop_event.is_set():
+                    page.finish()
+                    return
+                if previous is not page and previous and previous.running:
+                    if time.monotonic() >= deadline:
+                        page.append_log("Previous USB tool has not stopped. End its connection and try again.\n")
+                        self.set_status("USB connection handoff timed out")
+                        page.finish()
+                    else:
+                        self.after(50, wait_for_release)
+                    return
+                on_ready()
+
+            self.after(0, wait_for_release)
 
     def release_serial_page(self, page):
         if self.active_serial_page is page:
@@ -8815,30 +8834,38 @@ class CapturePage(SerialPage):
         self.pull_all_button.configure(state=state)
 
     def start(self):
-        super().start()
-        if self.running:
-            self.stop_button.configure(state="normal")
-            self.set_action_state("disabled")
+        self._start_task(self.run_tool)
 
     def start_backup(self, active_only):
-        port = self.auto_select_port()
-        if not port:
-            self.connection_state_var.set("No pedal connected")
-            messagebox.showinfo(
-                "No pedal connected",
-                "No Ignitron pedal answered over USB. Connect the ESP32 pedal, then try again.",
-            )
-            return
+        self._start_task(self.run_backup, active_only)
+
+    def _start_task(self, target, *args):
         if self.running:
             return
-        self.app.request_serial_start(self)
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
         self.running = True
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.set_action_state("disabled")
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        self.app.set_status("Preparing Spark Capture USB connection...")
+        self.app.request_serial_start(
+            self,
+            on_ready=lambda: threading.Thread(target=target, args=(port, *args), daemon=True).start(),
+        )
+
+    def capture_connected(self, port):
+        if self.stop_event.is_set():
+            return
+        self.app.remember_serial_port(port, verified=True)
         self.update_connection_indicator(True)
-        threading.Thread(target=self.run_backup, args=(port, active_only), daemon=True).start()
+        self.app.set_status("Spark Capture connected in AMP mode")
 
     def stop_capture(self):
         if not self.running:
@@ -8865,6 +8892,7 @@ class CapturePage(SerialPage):
         try:
             mode_connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
+            self.after(0, self.capture_connected, port)
             mode_connection.close()
             mode_connection = None
             backup_root = self.app.project_dir / "backups"
@@ -8901,74 +8929,92 @@ class CapturePage(SerialPage):
             self.after(0, self.finish)
 
     def _enter_capture_amp_mode(self, port):
-        """Request one-shot AMP mode and return a serial connection after reboot."""
-        self.append_log("Requesting automatic AMP mode for Spark Capture...\n")
-        connection = open_serial_no_reset(port, 115200, timeout=0.35)
-        try:
+        """Verify USB, enter temporary AMP mode, and restore APP mode on failure."""
+        mode_requested = False
+        with contextlib.ExitStack() as cleanup:
+            # Run after every owned serial handle closes, including cancellation
+            # during the expected reboot before a capture session is ready.
+            def restore_on_failure():
+                if mode_requested:
+                    self._return_to_app_mode(port=port)
+            cleanup.callback(restore_on_failure)
+            self.append_log("Requesting automatic AMP mode for Spark Capture...\n")
+            connection = open_serial_no_reset(port, 115200, timeout=0.35)
+            cleanup.callback(connection.close)
             try:
-                connection.reset_input_buffer()
-            except Exception:
-                pass
-            connection.write(b"CAPTUREMODE\n")
-            connection.flush()
-            deadline = time.monotonic() + 4.0
-            restarting = False
-            while time.monotonic() < deadline and not self.stop_event.is_set():
-                line = connection.readline().decode(errors="ignore").strip()
-                if not line:
-                    continue
-                self.append_log(line + "\n")
-                if line == "OK CAPTUREMODE READY":
-                    connection.write(b"CAPTUREKEEPALIVE\n")
-                    connection.flush()
-                    self.append_log("Ignitron is already in AMP mode.\n\n")
-                    return connection
-                if line == "OK CAPTUREMODE RESTARTING":
-                    restarting = True
-                    break
-                if line.startswith("ERR CAPTUREMODE"):
-                    raise RuntimeError(f"Ignitron rejected automatic AMP mode: {line}")
-            if not restarting:
-                raise RuntimeError(
-                    "This firmware does not support automatic Spark Capture AMP mode. "
-                    "Apply the current required IPT 2.1 firmware changes and flash again."
-                )
-        except Exception:
-            connection.close()
-            raise
-
-        connection.close()
-        self.append_log("Ignitron is restarting in AMP mode...\n")
-        reconnect_deadline = time.monotonic() + 18.0
-        last_error = None
-        while time.monotonic() < reconnect_deadline and not self.stop_event.is_set():
-            time.sleep(0.5)
-            candidate = None
-            try:
-                candidate = open_serial_no_reset(port, 115200, timeout=0.35)
-                candidate.write(b"PING\n")
-                candidate.flush()
-                ping_deadline = time.monotonic() + 1.5
-                while time.monotonic() < ping_deadline:
-                    line = candidate.readline().decode(errors="ignore").strip()
+                verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+                if self.stop_event.is_set():
+                    raise InterruptedError("Spark Capture connection cancelled")
+                self.after(0, self.connection_state_var.set, "Starting AMP mode...")
+                mode_requested = True
+                connection.write(b"CAPTUREMODE\n")
+                connection.flush()
+                deadline = time.monotonic() + 4.0
+                restarting = False
+                while time.monotonic() < deadline and not self.stop_event.is_set():
+                    line = connection.read_until(size=1024).decode(errors="ignore").strip()
                     if not line:
                         continue
                     self.append_log(line + "\n")
-                    if line.startswith("IGNITRON_FLASHER"):
-                        candidate.write(b"CAPTUREKEEPALIVE\n")
-                        candidate.flush()
-                        self.append_log("Automatic AMP mode is ready.\n\n")
-                        return candidate
-                candidate.close()
-            except Exception as exc:
-                last_error = exc
+                    if line == "OK CAPTUREMODE READY":
+                        connection.write(b"CAPTUREKEEPALIVE\n")
+                        connection.flush()
+                        self.append_log("Ignitron is already in AMP mode.\n\n")
+                        cleanup.pop_all()
+                        return connection
+                    if line == "OK CAPTUREMODE RESTARTING":
+                        restarting = True
+                        break
+                    if line.startswith("ERR CAPTUREMODE"):
+                        raise RuntimeError(f"Ignitron rejected automatic AMP mode: {line}")
+                if self.stop_event.is_set():
+                    raise InterruptedError("Spark Capture connection cancelled")
+                if not restarting:
+                    raise RuntimeError(
+                        "This firmware does not support automatic Spark Capture AMP mode. "
+                        "Apply the current required IPT 2.1 firmware changes and flash again."
+                    )
+            except Exception:
+                connection.close()
+                raise
+
+            connection.close()
+            self.append_log("Ignitron is restarting in AMP mode...\n")
+            reconnect_deadline = time.monotonic() + 18.0
+            last_error = None
+            while time.monotonic() < reconnect_deadline and not self.stop_event.is_set():
+                if self.stop_event.wait(0.5):
+                    break
+                candidate = None
                 try:
-                    if candidate:
-                        candidate.close()
-                except Exception:
-                    pass
-        detail = f" ({last_error})" if last_error else ""
-        raise RuntimeError(f"Ignitron did not reconnect after entering AMP mode{detail}")
+                    candidate = open_serial_no_reset(port, 115200, timeout=0.35)
+                    cleanup.callback(candidate.close)
+                    candidate.write(b"PING\n")
+                    candidate.flush()
+                    ping_deadline = time.monotonic() + 1.5
+                    while time.monotonic() < ping_deadline and not self.stop_event.is_set():
+                        line = candidate.read_until(size=1024).decode(errors="ignore").strip()
+                        if not line:
+                            continue
+                        self.append_log(line + "\n")
+                        if line.startswith("IGNITRON_FLASHER"):
+                            candidate.write(b"CAPTUREKEEPALIVE\n")
+                            candidate.flush()
+                            self.append_log("Automatic AMP mode is ready.\n\n")
+                            cleanup.pop_all()
+                            return candidate
+                    candidate.close()
+                except Exception as exc:
+                    last_error = exc
+                    try:
+                        if candidate:
+                            candidate.close()
+                    except Exception:
+                        pass
+            if self.stop_event.is_set():
+                raise InterruptedError("Spark Capture connection cancelled")
+            detail = f" ({last_error})" if last_error else ""
+            raise RuntimeError(f"Ignitron did not reconnect after entering AMP mode{detail}")
 
     def _return_to_app_mode(self, connection=None, port=None):
         """End temporary Capture mode and reboot through the normal APP path."""
@@ -8983,9 +9029,13 @@ class CapturePage(SerialPage):
                 pass
             connection.write(b"CAPTUREEND\n")
             connection.flush()
-            deadline = time.monotonic() + 2.5
+            deadline = time.monotonic() + 5.0
+            next_request = time.monotonic() + 0.5
             while time.monotonic() < deadline:
-                line = connection.readline().decode(errors="ignore").strip()
+                if time.monotonic() >= next_request:
+                    connection.write(b"CAPTUREEND\n")
+                    next_request = time.monotonic() + 0.5
+                line = connection.read_until(size=1024).decode(errors="ignore").strip()
                 if not line:
                     continue
                 self.append_log(line + "\n")
@@ -9023,6 +9073,7 @@ class CapturePage(SerialPage):
         try:
             connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
+            self.after(0, self.capture_connected, port)
             connection.timeout = 0.5
             self.append_log("Listening for presets from the Spark app...\n\n")
             buffer = ""
