@@ -1011,10 +1011,16 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         import threading
         import time
         master, slave = os.openpty()
+        # A blocking writer can fill Darwin's PTY buffer after the probe
+        # closes its reader, then deadlock os.close(master) during cleanup.
+        os.set_blocking(master, False)
         stop = threading.Event()
         def noise():
             while not stop.wait(0.002):
-                os.write(master, b"x" * 256)
+                try:
+                    os.write(master, b"x" * 256)
+                except BlockingIOError:
+                    pass
         writer = threading.Thread(target=noise, daemon=True)
         try:
             connection = serial.Serial(os.ttyname(slave), timeout=0.08)
@@ -1028,6 +1034,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
             stop.set()
             if writer.ident is not None:
                 writer.join(timeout=1)
+                self.assertFalse(writer.is_alive())
             os.close(master)
             os.close(slave)
 
