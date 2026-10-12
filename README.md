@@ -1,5 +1,5 @@
 # Ignitron Preset Tools 2.1.01
-*Shoutout to stangreg for this great project `https://github.com/stangreg/Ignitron` *
+*Shoutout to stangreg for this great project `https://github.com/stangreg/Ignitron` this has not been tested with mac*
 
 
 <img width="1024" height="1024" alt="IPT" src="https://github.com/mpkottawa/ignitron-preset-tools/blob/main/Ignitron%20preset%20tools%20logo.png" />
