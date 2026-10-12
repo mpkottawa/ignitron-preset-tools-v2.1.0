@@ -223,7 +223,7 @@ def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
         low = ln.lower()
 
         if low.startswith("reading preset filename:"):
-            if filename and buffer:
+            if filename:
                 scanned += 1
                 base = _basename(filename)
                 if base in seen_files:
@@ -254,7 +254,7 @@ def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
         if collecting:
             buffer.append(ln)
 
-    if filename and buffer:
+    if filename:
         scanned += 1
         base = _basename(filename)
         if base in seen_files:

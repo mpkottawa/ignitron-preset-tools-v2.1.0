@@ -99,6 +99,15 @@ class BackupTests(unittest.TestCase):
             second, _ = puller.resolve_out_paths(temp)
             self.assertNotEqual(first, second)
 
+    def test_empty_preset_file_is_an_incomplete_backup(self):
+        reply = preset_reply().replace(b'LISTPRESETS_DONE',
+            b'reading preset filename: empty.json\nLISTPRESETS_DONE')
+        connection = FakeSerial({'LISTPRESETS': reply})
+        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'Incomplete backup'):
+                puller.pull_presets('unused', include_only_active=False, connection=connection,
+                                    output_root=temp, open_folder_after=False)
+
     def test_backup_reuses_verified_port_and_leaves_it_open(self):
         connection = FakeSerial({
             'LISTBANKS': b'LISTBANKS_START\n-- Bank 1\ntone.json\nLISTBANKS_DONE\n',
