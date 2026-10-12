@@ -84,6 +84,16 @@ def preset_reply():
 
 
 class BackupTests(unittest.TestCase):
+    def test_failed_backup_write_does_not_leave_a_completed_file(self):
+        connection = FakeSerial({'LISTPRESETS': preset_reply()})
+        with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(puller.os, 'replace', side_effect=OSError('disk failure')):
+            with self.assertRaisesRegex(RuntimeError, 'No valid presets'):
+                puller.pull_presets('unused', include_only_active=False, connection=connection,
+                                    output_root=temp, open_folder_after=False)
+            self.assertEqual([], list(Path(temp).rglob('*.json')))
+            self.assertEqual([], list(Path(temp).rglob('*.tmp')))
+
     def test_full_library_rejects_partial_backup(self):
         reply = preset_reply().replace(b'LISTPRESETS_DONE',
             b'reading preset filename: broken.json\nJSON STRING: {broken}\nLISTPRESETS_DONE')

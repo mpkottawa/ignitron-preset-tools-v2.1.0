@@ -192,6 +192,7 @@ def _normalize_for_ignitron(preset: dict) -> dict:
 def _write_preset_file(filename, buffer, out_dir, include_only):
     json_text = "\n".join(buffer)
     json_text = _clean_json_text(json_text)
+    temporary = None
 
     try:
         preset = json.loads(json_text)
@@ -202,14 +203,20 @@ def _write_preset_file(filename, buffer, out_dir, include_only):
 
         base = _basename(filename)
         if (include_only is None) or (base in include_only):
-            with open(out_dir / base, "w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=out_dir,
+                                             prefix=".preset-", suffix=".tmp", delete=False) as f:
+                temporary = Path(f.name)
                 json.dump(preset, f, indent=2)
+            os.replace(temporary, out_dir / base)
             return True, uuid_up
         return False, uuid_up
 
     except Exception as e:
         print(f"⚠️ Failed to process preset {filename}: {e}")
         return False, ""
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
     safe_mkdir(out_dir)
