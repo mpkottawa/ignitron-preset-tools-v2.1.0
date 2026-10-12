@@ -1,0 +1,150 @@
+-- Bank 1
+EddieVanHalen.json
+FinalCountdown.json
+DarkSoul.json
+HateToSay.json
+-- Bank 2
+BendTheFend.json
+DancingInTheRoom.json
+SilverShip.json
+Hendrix.json
+-- Bank 3
+SantanaBlackMagicWoman.json
+PapaResortLastResort.json
+TornadoOfSouls.json
+WoodenBridge.json
+-- Bank 4
+SultansOfSwing2.json
+AcDc.json
+SultansOfSwingKnopfler.json
+RoyalCrown.json
+-- Bank 5
+KnockingOnHeaven.json
+CleanForBallads.json
+ModernVintageClean.json
+NothingElseMatters.json
+-- Bank 6
+IronMaiden.json
+SlashDontCry.json
+ModernStone.json
+SlashAFD.json
+-- Bank 7
+SlashV2.json
+EnglFireball.json
+EnterSandman.json
+Rush.json
+-- Bank 8
+CrazyTrain.json
+12stracoustrummingCN1.json
+PerfectCleanLarson.json
+HouseoftheRisingSonJusti.json
+-- Bank 9
+AliceCooper.json
+SweetChildOfMine.json
+IronHammer.json
+DookieSoundGreenDay.json
+-- Bank 10
+CountryRoad.json
+OrangeAD30Arpeggio.json
+TremontiClean.json
+GunsNRoses.json
+-- Bank 11
+DualTrain.json
+JethroTull.json
+FooFightersEverlong.json
+SpookyMelody.json
+-- Bank 12
+NothingElseMattersAcous.json
+BohemianRhapsody.json
+NovemberRainSolo.json
+MillenialLead.json
+-- Bank 13
+MasterOfPuppets.json
+BluesArk.json
+VintageCreamyLarson.json
+CleanRB500.json
+-- Bank 14
+Anastasia.json
+FuzzyJam.json
+HeavyAxe.json
+StoneBreaker.json
+-- Bank 15
+ComfortablyNumbSolo.json
+ZakkWyldeNoMoreTearsLead.json
+VanHalen.json
+VoodooKidWah.json
+-- Bank 16
+NothingElseMattersMetall.json
+SunshineOfMyLove.json
+WizoQuadrat1.json
+AintTalkinBoutLoveLARSON.json
+-- Bank 17
+FooFighters.json
+ParadiseCity.json
+GhostDanceMacabreMart.json
+StairwayToHeavenSolo.json
+-- Bank 18
+DireStraits.json
+ToolClean.json
+RockDistortion.json
+Oasis.json
+-- Bank 19
+SatrianiSatchBoogie.json
+TremontiAlternative.json
+BritishAccent.json
+LynyrdSkynyrd.json
+-- Bank 20
+HideAndSeek.json
+The1975.json
+SweetMemory.json
+BangBang.json
+-- Bank 21
+CleanRB5001.json
+Wizo.json
+EricJohnsoncliffsofDover.json
+CrazyCrue.json
+-- Bank 22
+RedHotChiliPeppers.json
+AngryMonkey.json
+Megadeth.json
+RageNowInTheFire.json
+-- Bank 23
+muffRB500.json
+HouseoftheRisingSonJusti.json
+TornadoOfSouls.json
+ToolClean.json
+-- Bank 24
+CleanRB5001.json
+WizoQuadrat1.json
+AintTalkinBoutLoveLARSON.json
+BohemianRhapsody.json
+-- Bank 25
+CrazyCrue.json
+muffRB500.json
+DookieSoundGreenDay.json
+DookieSoundGreenDay.json
+-- Bank 26
+AliceCooper.json
+EddieVanHalen.json
+BendTheFend.json
+EricJohnsoncliffsofDover.json
+-- Bank 27
+HeavyAxe.json
+LynyrdSkynyrd.json
+HouseoftheRisingSonJusti.json
+SlashDontCry.json
+-- Bank 28
+EricJohnsoncliffsofDover.json
+MasterOfPuppets.json
+ZakkWyldeNoMoreTearsLead.json
+DancingInTheRoom.json
+-- Bank 29
+GhostDanceMacabreMart.json
+Hendrix.json
+Hendrix.json
+FooFightersEverlong.json
+-- Bank 30
+ZakkWyldeNoMoreTearsLead.json
+EnterSandman.json
+DancingInTheRoom.json
+SlashDontCry.json

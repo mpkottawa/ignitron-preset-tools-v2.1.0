@@ -1,0 +1,153 @@
+name: Build and test release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing or new release tag to publish (leave blank for artifacts only)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Linux GUI runtime
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile Python sources
+        run: python -m py_compile ignitron_preset_tools_v2.1.py preset_puller.py preset_chart.py preset_converter.py release_tools.py
+      - name: Run tests
+        env:
+          IGNITRON_BASELINE: Ignitron 1.9.0
+        run: python -m unittest -v
+      - name: Verify clean dual-firmware source staging
+        if: runner.os == 'Linux'
+        run: python release_tools.py stage-source . "${RUNNER_TEMP}/ipt-source-release"
+
+  windows:
+    name: Windows x64 package
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build Windows package
+        shell: pwsh
+        run: ./build_release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ignitron-Preset-Tools-v2.1.00-Windows-x64
+          path: release/*Windows-x64.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }} package
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build macOS package
+        run: |
+          chmod +x build_release_mac.sh
+          ./build_release_mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ignitron-Preset-Tools-v2.1.00-macOS-${{ matrix.arch }}
+          path: release/*macOS-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }} package
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Linux GUI and VLC runtimes
+        run: sudo apt-get update && sudo apt-get install -y python3-tk vlc libvlc-dev
+      - name: Build Linux package
+        run: |
+          chmod +x build_release_linux.sh
+          ./build_release_linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ignitron-Preset-Tools-v2.1.00-Linux-${{ matrix.arch }}
+          path: release/*Linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: [windows, macos, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ -n "$INPUT_TAG" ]]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create release if needed and upload native packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "Ignitron Preset Tools $RELEASE_TAG" --notes-file GITHUB_RELEASE.md
+          (cd artifacts && sha256sum * > SHA256SUMS.txt)
+          gh release upload "$RELEASE_TAG" artifacts/* --clobber

@@ -1,0 +1,15 @@
+* text=auto
+*.bat text eol=crlf
+*.command text eol=lf
+*.ps1 text eol=crlf
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.bin binary
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.webp binary
