@@ -31,7 +31,7 @@ jobs:
           cache: pip
       - name: Install Linux GUI runtime
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
+        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-gi desktop-file-utils
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Compile Python sources
@@ -111,7 +111,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install Linux GUI and VLC runtimes
-        run: sudo apt-get update && sudo apt-get install -y python3-tk vlc libvlc-dev
+        run: sudo apt-get update && sudo apt-get install -y python3-tk vlc libvlc-dev desktop-file-utils
       - name: Build Linux package
         run: |
           chmod +x build_release_linux.sh
@@ -121,6 +121,9 @@ jobs:
         run: |
           package_dir=$(find release -maxdepth 1 -type d -name '*Linux-${{ matrix.arch }}' -print -quit)
           test -n "$package_dir"
+          desktop-file-validate "$package_dir/Install Ignitron.desktop"
+          (cd "$package_dir" && sha256sum --check --strict --quiet linux-bundle.sha256)
+          bash "$package_dir/setup_linux.sh" --check
           "$package_dir/app/ignitron-preset-tools" --vlc-self-test
       - uses: actions/upload-artifact@v4
         with:

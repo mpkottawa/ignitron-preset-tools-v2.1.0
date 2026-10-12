@@ -1,12 +1,20 @@
 # Ignitron Preset Tools v2.1.01
 
+## Bundled Linux installer refresh - 2026-10-12
+
+- Refreshed both Linux archives with an executable **Install Ignitron** desktop launcher, all-in-one setup and the updated PDF/START-HERE guide.
+- Uses and verifies the bundled application instead of downloading the archive again; detects wrong architecture or damaged/incomplete bundles before system installation.
+- Opens a terminal for the password and progress, keeps errors visible, and opens IPT after successful setup. Desktop trust/executable confirmation may be required.
+- Builds in a temporary firmware copy so the extracted package remains reusable. The standalone online installer is still available.
+- Application and firmware payloads, Windows/macOS packages and the v2.1.01 tag are unchanged. Linux archive checksums have changed; use the refreshed SHA256SUMS.txt.
+
 ## All-in-one Linux setup - 2026-10-12
 
 - Added `Install-IPT-Linux.sh` as a separate online installer for the existing v2.1.01 release, with source in `setup_linux.sh`.
 - Detects Fedora/Ubuntu/Debian and x64/ARM64; installs missing native VLC/Python requirements, PlatformIO Core, USB permissions, IPT, and KDE folder/NAS helpers when applicable.
 - Verifies release checksums, checks both VLC backends, and downloads firmware tools while testing firmware and filesystem builds without uploading to a pedal.
 - Preserves existing data, stops with an actionable log on failure, and supports a read-only `--check` preview.
-- Revised the Linux PDF with a one-file setup route. The original v2.1.01 native archives and tag remain unchanged.
+- Revised the Linux PDF with a one-file setup route. This initially shipped as a separate download; the later packaging refresh above includes it in both Linux archives.
 
 ## Fixes in v2.1.01 - 2026-10-12
 

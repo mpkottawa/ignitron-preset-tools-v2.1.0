@@ -1,0 +1,33 @@
+IGNITRON PRESET TOOLS - LINUX SETUP
+
+1. Extract the whole Linux archive into a local folder, such as Downloads.
+   Do not run the installer from inside the archive viewer.
+2. Keep the pedal unplugged and close IPT if it is already open.
+3. Double-click "Install Ignitron" (Install Ignitron.desktop).
+   If Linux asks, choose Execute/Trust/Allow Launching. On some desktops,
+   right-click it first and use Properties > Permissions > executable.
+4. A terminal setup window opens. Enter your Linux password when asked.
+   Password characters are hidden. Keep the window open until SETUP COMPLETE.
+5. IPT opens automatically. Its shortcut is also in the application menu.
+   Review the pedal hardware settings before connecting and flashing it.
+
+Setup installs or locates VLC, PlatformIO Core, USB permissions and IPT.
+It also installs KDE Places/NAS helpers when needed. Firmware tool downloads
+and the first build checks take several minutes and require internet access.
+VS Code is not required. Setup never flashes or erases the pedal.
+Existing working projects, presets, captures and settings are preserved.
+
+Supports Fedora with dnf and Ubuntu/Debian with apt, x64 or ARM64.
+Atomic/immutable editions need a separate setup method.
+
+If your desktop opens the launcher as text or refuses to launch it:
+Right-click empty space INSIDE this extracted folder > Open Terminal Here,
+then paste this one command (without sudo):
+
+    bash ./launch_linux_setup.sh
+
+For a read-only preview: bash ./setup_linux.sh --check
+For manual/app-only installation, see Linux-Install-Guide.pdf pages 2-4.
+The install_linux.sh script alone does NOT install prerequisites.
+If setup fails, it keeps the error visible and prints the log location.
+Fix the reported problem and run Install Ignitron again.

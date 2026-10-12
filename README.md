@@ -45,21 +45,22 @@ Extract it and move `Ignitron Preset Tools v2.1.01.app` to Applications. Unsigne
 
 ### Linux
 
-#### Recommended: all-in-one setup
+#### Recommended: bundled all-in-one setup
 
-Download **[Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh)** from the v2.1.01 release into Downloads. Keep the pedal unplugged, close IPT if it is open, and run this as your normal user:
+1. Download the **Linux-x64.tar.gz** archive from [v2.1.01](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/tag/v2.1.01) for a typical Intel/AMD PC, or **Linux-arm64.tar.gz** for an ARM64 computer.
+2. Right-click the download and **Extract** the whole archive into a local folder. Open the extracted folder, not the archive viewer. Keep the pedal unplugged and close IPT.
+3. Double-click **Install Ignitron** (`Install Ignitron.desktop`). If your desktop asks, choose **Execute**, **Trust**, or **Allow Launching**. Some desktops require right-click > Properties > Permissions > executable first.
+4. Enter your Linux password in the setup terminal when asked; characters stay hidden. Wait for **SETUP COMPLETE**. IPT then opens automatically and is available in the application menu.
 
-```bash
-bash "$HOME/Downloads/Install-IPT-Linux.sh"
-```
+The setup uses the included app without downloading it again. It verifies the bundle, installs or locates native VLC/Python prerequisites, PlatformIO Core, official USB rules, and KDE Places/NAS helpers when applicable. It checks VLC plus firmware and filesystem builds. Fedora with dnf and Ubuntu/Debian with apt are supported. Internet is required for dependencies; initial downloads and compilation can take several minutes. VS Code and Arduino IDE are not needed.
 
-Enter your Linux password when sudo asks. The installer detects Fedora or Ubuntu/Debian and x64 or ARM64, installs missing native VLC/Python/curl prerequisites, verifies and installs IPT, installs PlatformIO in its normal user environment, installs the official USB rules, and checks VLC plus firmware and filesystem builds. KDE users also get the Places/NAS helpers `kdialog` and `kio-fuse`. VS Code and Arduino IDE are not needed. Internet is required; first-time ESP32 downloads and compilation can take several minutes.
+Review the pedal hardware settings before flashing. Setup never uploads to or erases the pedal, and preserves existing projects, presets and settings. Build checks use a temporary copy of the included firmware; your first build of a working project may still unpack cached libraries and compile it.
 
-Continue only when it says **SETUP COMPLETE**. Open IPT from the application menu and review the pedal's hardware settings before flashing. Setup never uploads to or erases the pedal, and preserves existing projects, presets and settings. Its build checks use the clean downloaded firmware; your first build of a working project may still unpack cached libraries and compile it.
+**If the launcher opens as text:** right-click empty space inside the extracted folder, choose **Open Terminal Here**, and paste `bash ./launch_linux_setup.sh`. `bash ./setup_linux.sh --check` previews the plan without changes. Errors remain visible in the terminal, with logs under `~/.local/state/ignitron-preset-tools/setup`. Correct the reported problem and rerun setup. Atomic/immutable editions and other distributions need a separate setup method.
 
-`bash Install-IPT-Linux.sh --check` shows the plan without making changes. If a stage fails, setup stops with a log under `~/.local/state/ignitron-preset-tools/setup`; fix the reported problem and rerun the same installer. Atomic/immutable Fedora editions and other distributions need their own setup method. The source for the release installer is [setup_linux.sh](setup_linux.sh).
+The Linux archives were refreshed with this installer and the revised [Linux installation PDF](Linux-Install-Guide.pdf). The packaged app and firmware are unchanged from v2.1.01; Windows/macOS downloads and the release tag are unchanged. Use the updated `SHA256SUMS.txt` for the refreshed archives.
 
-Follow [the updated Linux installation PDF](Linux-Install-Guide.pdf) for setup and feature checks. The original v2.1.01 native archives remain unchanged; the new online installer and revised PDF are additional release downloads.
+The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh) is still available for online setup: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"`. That route downloads the matching app package automatically.
 
 #### Manual installation alternative
 

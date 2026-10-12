@@ -20,17 +20,19 @@ IPT v2.1.01 is the desktop control center for building Ignitron preset banks, in
 
 ## Native downloads
 
-### Linux: one-file setup
+### Linux: installer included
 
-Download **[Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh)** into Downloads, keep the pedal unplugged, then run:
+1. Download **Linux-x64.tar.gz** for an Intel/AMD PC, or **Linux-arm64.tar.gz** for an ARM64 computer.
+2. Extract the whole archive, open its folder, and double-click **Install Ignitron**. Choose Execute/Trust/Allow Launching if your desktop asks.
+3. Enter your Linux password in the setup window and wait for **SETUP COMPLETE**. IPT opens automatically.
 
-```bash
-bash "$HOME/Downloads/Install-IPT-Linux.sh"
-```
+Keep the pedal unplugged during setup. The included all-in-one installer verifies the bundle and installs or locates native VLC/Python requirements, PlatformIO Core, USB permissions, and KDE Places/NAS helpers. It checks VLC playback and builds firmware/filesystem without flashing the pedal. It preserves existing projects and presets. Internet is needed for dependencies. Supports Fedora with dnf and Ubuntu/Debian with apt; VS Code is not required.
 
-It installs missing VLC/Python prerequisites, PlatformIO Core, USB rules and the matching x64/ARM64 IPT package. KDE Places/NAS helpers are included on KDE. It verifies the download and checks both VLC playback and firmware/filesystem builds. Enter your Linux password when asked, and wait for **SETUP COMPLETE**. Fedora with dnf and Ubuntu/Debian with apt are supported. Review the pedal hardware settings in IPT before flashing; setup does not upload to a pedal. Existing projects and presets are preserved.
+If the launcher opens as text, use **Open Terminal Here** inside the extracted folder and run `bash ./launch_linux_setup.sh`. Some desktops require marking the launcher executable or trusted first. See **START-HERE-Linux.txt** and the bundled **Linux-Install-Guide.pdf**.
 
-This installer and the revised PDF were added after the original v2.1.01 packages. The native application archives and release tag remain unchanged. The archive's `install_linux.sh` remains the app-only/manual alternative.
+**Linux packaging refresh:** these two Linux archives now contain the installer, launcher and revised guide. The application and firmware payloads are unchanged from v2.1.01. Use the updated **SHA256SUMS.txt**. Windows/macOS archives and the release tag are unchanged.
+
+The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh) remains available: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"` for online setup.
 
 ### Individual platform packages
 
@@ -42,7 +44,7 @@ Choose the archive matching the operating system and CPU:
 - `Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz`
 - `Ignitron.Preset.Tools.v2.1.01.Linux-arm64.tar.gz`
 
-Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users can use the one-file setup above, or follow the manual prerequisites in `README.md` and run the archive's `./install_linux.sh` for an app-only installation.
+Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users use **Install Ignitron** inside the extracted folder. The `install_linux.sh` script remains an app-only/manual alternative after separately installing prerequisites.
 
 The release workflow builds each application natively. It does not relabel a Windows executable for another operating system.
 

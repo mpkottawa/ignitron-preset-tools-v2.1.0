@@ -11,6 +11,8 @@ import tarfile
 import tempfile
 import unittest
 
+from release_tools import stage_linux_setup
+
 ROOT = Path(__file__).resolve().parent
 
 # These commands never elevate or contact the network. Real tar, sha256sum and
@@ -56,6 +58,8 @@ elif name in ('platformio', 'pio'):
     else:
         assert args[0] == 'run', args
         assert '--target' not in args or args[-1] == 'buildfs', args
+        project = Path(args[args.index('--project-dir') + 1])
+        (project / '.pio').mkdir(exist_ok=True)
         if c.get('fail') == 'build' or (c.get('fail') == 'buildfs' and args[-1] == 'buildfs'): sys.exit(1)
 elif name == 'ignitron-preset-tools':
     assert args in (['--vlc-self-test'], ['--vlc-audio-self-test']), args
@@ -118,6 +122,68 @@ class LinuxSetupTests(unittest.TestCase):
     def commands(self):
         trace = Path(self.config['trace'])
         return [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+
+    def bundle(self, arch='x64'):
+        for name in ('launch_linux_setup.sh', 'START-HERE-Linux.txt'):
+            shutil.copy2(ROOT / name, self.root / name)
+        stage_linux_setup(self.root, self.package, '2.1.01', arch)
+        self.script = self.package / 'setup_linux.sh'
+
+    def test_bundled_setup_needs_no_app_download_and_leaves_extraction_pristine(self):
+        self.bundle()
+        before = {p.relative_to(self.package): p.read_bytes() for p in self.package.rglob('*') if p.is_file()}
+        result = self.run_setup()
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn('SETUP COMPLETE', result.stdout)
+        self.assertFalse(any(c[0] == 'curl' and c[-1].endswith(('.tar.gz', 'SHA256SUMS.txt')) for c in self.commands()))
+        after = {p.relative_to(self.package): p.read_bytes() for p in self.package.rglob('*') if p.is_file()}
+        self.assertEqual(before, after)
+        self.assertFalse((self.package / 'ignitron firmware/.pio').exists())
+        self.assertTrue((self.home / 'data/ignitron-preset-tools/app/ignitron-preset-tools').exists())
+
+    def test_wrong_arch_incomplete_and_corrupt_bundles_stop_before_sudo(self):
+        self.bundle(arch='arm64')
+        self.assert_stopped(self.run_setup())
+        (self.package / 'linux-package.txt').write_text('2.1.01 x64\n')
+        self.assert_stopped(self.run_setup())  # changed metadata fails manifest
+        (self.package / 'linux-package.txt').unlink()
+        self.assert_stopped(self.run_setup())
+        self.assertFalse(any(c[0] in ('sudo', 'curl') for c in self.commands()))
+
+    def test_launcher_keeps_installer_failure_status(self):
+        self.bundle()
+        self.script.write_text('exit 7\n')
+        result = subprocess.run(['bash', str(self.package / 'launch_linux_setup.sh')],
+                                env=self.env, input='', capture_output=True, text=True, timeout=10)
+        self.assertEqual(7, result.returncode)
+        self.assertIn('Installation did not finish', result.stdout)
+        self.assertNotIn('Opening Ignitron', result.stdout)
+
+    def test_desktop_launcher_handles_moved_folder_and_shell_metacharacters(self):
+        # Exercise the desktop implementation's actual Exec parsing, not a
+        # home-grown split. GI is optional on developer machines/non-Linux CI.
+        python = '/usr/bin/python3'
+        probe = subprocess.run([python, '-c', 'from gi.repository import Gio'], capture_output=True)
+        if probe.returncode:
+            self.skipTest('Gio desktop parser is unavailable')
+        self.bundle()
+        strange = self.root / "Moved 100% ' $folder $(false)"
+        self.package.rename(strange)
+        launcher = strange / 'launch_linux_setup.sh'
+        launcher.write_text('printf success > "$(dirname -- "$0")/launched.txt"\n')
+        desktop = strange / 'Install Ignitron.desktop'
+        if shutil.which('desktop-file-validate'):
+            subprocess.run(['desktop-file-validate', str(desktop)], check=True, capture_output=True)
+        desktop.write_text(desktop.read_text().replace('Terminal=true', 'Terminal=false'))
+        code = 'from gi.repository import Gio; import sys; app=Gio.DesktopAppInfo.new_from_filename(sys.argv[1]); assert app; assert app.launch([], None)'
+        subprocess.run([python, '-c', code, str(desktop)], check=True, capture_output=True, timeout=10)
+        import time
+        marker = strange / 'launched.txt'
+        for _ in range(100):
+            if marker.exists():
+                break
+            time.sleep(0.02)
+        self.assertEqual('success', marker.read_text())
 
     def assert_stopped(self, result):
         self.assertNotEqual(0, result.returncode, result.stdout)
