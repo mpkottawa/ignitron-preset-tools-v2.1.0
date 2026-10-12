@@ -58,6 +58,7 @@ SOURCE_FILES = (
     "Ignitron preset tools logo ASCII 120x60.txt",
     "IPT.ico",
     "LICENSE",
+    "Linux-Install-Guide.pdf",
     "README.md",
     "RELEASE_NOTES.md",
     "Run IPT 2.1.bat",
@@ -70,15 +71,17 @@ SOURCE_FILES = (
     "preset_app_scraper.py",
     "preset_chart.py",
     "preset_converter.py",
+    "preset_capture.py",
     "preset_puller.py",
     "release_tools.py",
     "requirements-build.txt",
     "requirements.txt",
     "run_ipt_2.1.sh",
     "test_firmware_injector.py",
+    "test_linux_workflows.py",
     "uninstall_linux.sh",
 )
-SOURCE_DIRECTORIES = (".github", "reference")
+SOURCE_DIRECTORIES = (".github", "reference", "docs")
 FIRMWARE_PROJECTS = (
     ("Ignitron", "Ignitron"),
     ("Ignitron 1.9.0", "Ignitron 1.9.0"),

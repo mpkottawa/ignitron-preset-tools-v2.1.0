@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-RELEASE_VERSION="2.1.00"
+RELEASE_VERSION="2.1.01"
 APP_NAME="Ignitron Preset Tools v$RELEASE_VERSION"
 ENTRY="$ROOT/ignitron_preset_tools_v2.1.py"
 BUILD_ROOT="$ROOT/build"
@@ -56,11 +56,31 @@ done
   "${DATA_ARGS[@]}" \
   "$ENTRY"
 
+# python-vlc's PyInstaller discovery can copy the build host's libvlc core into
+# the application. That core is not portable across Linux distributions and
+# must never be mixed with another distribution's VLC plugins. Linux packages
+# intentionally use the matching system libVLC and plugin set instead.
+while IFS= read -r -d '' bundled_library; do
+  echo "Removing non-portable bundled VLC library: $bundled_library"
+  rm -f -- "$bundled_library"
+done < <(find "$PYINSTALLER_APP" \( -type f -o -type l \) \
+  \( -name 'libvlc.so*' -o -name 'libvlccore.so*' \) -print0)
+while IFS= read -r -d '' bundled_plugins; do
+  echo "Removing non-portable bundled VLC plugins: $bundled_plugins"
+  rm -rf -- "$bundled_plugins"
+done < <(find "$PYINSTALLER_APP" -type d -path '*/vlc/plugins' -prune -print0)
+
 rm -rf "$DIST_PACKAGE"
 mkdir -p "$DIST_PACKAGE/app"
 cp -R "$PYINSTALLER_APP/." "$DIST_PACKAGE/app/"
 cp "$ROOT/install_linux.sh" "$ROOT/uninstall_linux.sh" "$DIST_PACKAGE/"
 chmod +x "$DIST_PACKAGE/install_linux.sh" "$DIST_PACKAGE/uninstall_linux.sh" "$DIST_PACKAGE/app/ignitron-preset-tools"
+
+if find "$DIST_PACKAGE/app" \( -type f -o -type l \) \
+    \( -name 'libvlc.so*' -o -name 'libvlccore.so*' \) -print -quit | grep -q .; then
+  echo "Linux package still contains a non-portable VLC core library." >&2
+  exit 1
+fi
 
 if [[ -f "$ROOT/IPT.ico" ]]; then
   ROOT="$ROOT" DIST_PACKAGE="$DIST_PACKAGE" "$PYTHON" - <<'PY'
@@ -72,7 +92,7 @@ source = Image.open(Path(os.environ["ROOT"]) / "IPT.ico").convert("RGBA")
 source.resize((256, 256), Image.Resampling.LANCZOS).save(Path(os.environ["DIST_PACKAGE"]) / "ipt.png")
 PY
 fi
-for document in README.md FIRMWARE.md RELEASE_NOTES.md GITHUB_RELEASE.md LICENSE; do
+for document in README.md FIRMWARE.md RELEASE_NOTES.md GITHUB_RELEASE.md LICENSE Linux-Install-Guide.pdf; do
   [[ -f "$ROOT/$document" ]] && cp "$ROOT/$document" "$DIST_PACKAGE/$document"
 done
 if [[ -d "$FIRMWARE_SOURCE" ]]; then

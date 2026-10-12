@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Ignitron Preset Tools v2.1.00 - desktop control center."""
+"""Ignitron Preset Tools v2.1.01 - desktop control center."""
 
 import contextlib
+import ast
+from urllib.parse import urlsplit
 import base64
 import importlib.util
 import io
@@ -13,12 +15,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
 import wave
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from preset_capture import PresetCaptureDecoder, save_captured_preset
 
 try:
     from PIL import Image, ImageTk
@@ -26,14 +30,15 @@ except Exception:
     Image = None
     ImageTk = None
 
-try:
-    import vlc
-except Exception:
-    vlc = None
+# VLC is imported lazily after configure_vlc_runtime() has prepared the native
+# loader. This matters in frozen applications, where importing python-vlc at
+# module load time can bind to an incompatible library before runtime setup.
+vlc = None
+_VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
-APP_VERSION = "2.1.00"
+APP_VERSION = "2.1.01"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
@@ -131,7 +136,7 @@ STOCK_HARDWARE_SETTINGS = {
         "dedicated_leds_var": False,
     },
 }
-APP_RELEASE_DATE = "2026-07-06"
+APP_RELEASE_DATE = "2026-10-12"
 APP_DESCRIPTION = "Preset building, pedal control, firmware setup, filesystem upload, and serial capture tools."
 IPT_REQUIRED_FILES = (
     "Ignitron.ino",
@@ -277,7 +282,8 @@ def settings_file():
 
 def load_settings():
     try:
-        return json.loads(settings_file().read_text(encoding="utf-8"))
+        data = json.loads(settings_file().read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
@@ -285,7 +291,16 @@ def load_settings():
 def save_settings(data):
     path = settings_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix=".settings-", suffix=".tmp", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump(data, output, indent=2)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def update_settings(**updates):
@@ -430,6 +445,54 @@ def external_process_env():
     return env
 
 
+def choose_music_folder(initial):
+    """Use KDE Places when available, with Tk as a portable fallback."""
+    if sys.platform.startswith("linux") and shutil.which("kdialog"):
+        try:
+            result = subprocess.run(
+                ["kdialog", "--getexistingdirectory", initial,
+                 "--title", "Choose backing-track library"],
+                env=external_process_env(), capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+            if result.returncode == 1:
+                return ""
+        except OSError:
+            pass
+    return filedialog.askdirectory(title="Choose backing-track library", initialdir=initial)
+
+
+def resolve_music_folder(location):
+    """Resolve a local folder or let KDE authenticate/mount an SMB location."""
+    location = location.strip()
+    if not location:
+        raise ValueError("Choose a music folder first.")
+    if location.lower().startswith("smb://"):
+        if urlsplit(location).password is not None:
+            raise ValueError("Do not put passwords in the address. Sign in through Dolphin instead.")
+        if not sys.platform.startswith("linux") or not shutil.which("gdbus"):
+            raise ValueError("Mount this network share in your file manager, then choose its local folder.")
+        try:
+            result = subprocess.run(
+                ["gdbus", "call", "--session", "--dest", "org.kde.KIOFuse",
+                 "--object-path", "/org/kde/KIOFuse", "--method",
+                 "org.kde.KIOFuse.VFS.mountUrl", location],
+                env=external_process_env(), capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode:
+                raise ValueError("Open this share in Dolphin and sign in, then retry. KDE KIOFuse is required for SMB addresses.")
+            location = ast.literal_eval(result.stdout.strip())[0]
+        except (OSError, subprocess.TimeoutExpired, SyntaxError, IndexError) as exc:
+            raise ValueError("Open the share in Dolphin and sign in, then retry or choose its mounted folder.") from exc
+    elif "://" in location:
+        raise ValueError("Choose a local/mounted folder, or an smb:// address on KDE.")
+    root = Path(location).expanduser()
+    if not root.is_dir():
+        raise ValueError("Folder is unavailable. Reconnect the drive or share and try again.")
+    return root
+
+
 def open_folder(path):
     path = str(Path(path).resolve())
     if sys.platform.startswith("win"):
@@ -443,7 +506,31 @@ def open_folder(path):
 def open_serial_no_reset(port, baud=115200, timeout=0.25):
     import serial
 
-    connection = serial.Serial()
+    serial_class = serial.Serial
+    if sys.platform.startswith("linux"):
+        import fcntl
+        import struct
+        import termios
+
+        class LinuxNoResetSerial(serial.Serial):
+            # ESP32 auto-reset circuits react to the intermediate DTR/RTS
+            # combination produced by two separate Linux modem-control writes.
+            # Clear both lines in one ioctl when opening a control session.
+            def _update_dtr_state(self):
+                if not self._dtr_state and not self._rts_state:
+                    fcntl.ioctl(self.fd, termios.TIOCMBIC,
+                                struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS))
+                else:
+                    super()._update_dtr_state()
+
+            def _update_rts_state(self):
+                if not self._dtr_state and not self._rts_state:
+                    self._update_dtr_state()
+                else:
+                    super()._update_rts_state()
+
+        serial_class = LinuxNoResetSerial
+    connection = serial_class()
     connection.port = port
     connection.baudrate = baud
     connection.timeout = timeout
@@ -453,14 +540,68 @@ def open_serial_no_reset(port, baud=115200, timeout=0.25):
     connection.dtr = False
     connection.rts = False
     connection.open()
-    try:
-        connection.setDTR(False)
-        connection.setRTS(False)
-        connection.reset_input_buffer()
-        connection.reset_output_buffer()
-    except Exception:
-        pass
     return connection
+
+
+def verify_ignitron_connection(connection, timeout=6.0, stop_event=None, log=None):
+    """Wait through an adapter-induced boot, keeping the verified port open."""
+    # Discard stale adapter output before issuing a fresh identity challenge.
+    if stop_event is not None:
+        if stop_event.wait(0.25):
+            raise InterruptedError("USB connection cancelled")
+    else:
+        time.sleep(0.25)
+    connection.reset_input_buffer()
+    deadline = time.monotonic() + timeout
+    next_ping = 0.0
+    last_boot_line = None
+    while time.monotonic() < deadline:
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("USB connection cancelled")
+        now = time.monotonic()
+        if now >= next_ping:
+            connection.write(b"\nPING\n")
+            next_ping = now + 0.5
+        line = connection.read_until(size=512).decode(errors="replace").strip()
+        if re.match(r"^IGNITRON_FLASHER(?:\s|$)", line):
+            if log:
+                log(f"Verified pedal: {line}\n")
+            return
+        if log and line != last_boot_line and (is_pedal_reset_line(line) or line.startswith("BOOT ")):
+            log(f"Waiting for pedal startup: {line[:160]}\n")
+            last_boot_line = line
+    raise TimeoutError(
+        "USB port opened, but no Ignitron PING reply arrived within "
+        f"{timeout:g} seconds. Check pedal power and IPT firmware support."
+    )
+
+
+def run_serial_self_test(port, output=print):
+    """Check the packaged handshake and hardware query without changing presets."""
+    connection = None
+    try:
+        connection = open_serial_no_reset(port, timeout=0.1)
+        verify_ignitron_connection(connection, log=lambda line: output(line.strip()))
+        connection.write(b"HWINFO\n")
+        deadline = time.monotonic() + 3
+        hardware = None
+        while time.monotonic() < deadline:
+            line = connection.readline().decode(errors="replace").strip()
+            if is_pedal_reset_line(line):
+                raise RuntimeError("Pedal reset after verification: " + line)
+            if line.startswith("HWINFO "):
+                hardware = line
+        if not hardware:
+            raise TimeoutError("Pedal identity verified, but HWINFO did not reply")
+        output(hardware)
+        output("Serial self-test passed: handshake, hardware query, stable connection.")
+        return 0
+    except Exception as exc:
+        output(f"Serial self-test failed: {exc}")
+        return 1
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 def is_pedal_reset_line(line):
@@ -550,7 +691,7 @@ def probe_ignitron_port(port, timeout=0.9):
         deadline = time.time() + timeout
         buffer = ""
         while time.time() < deadline:
-            line = connection.readline().decode(errors="ignore").strip()
+            line = connection.read_until(size=512).decode(errors="ignore").strip()
             if line:
                 buffer += line + "\n"
                 upper = line.upper()
@@ -688,15 +829,123 @@ def configure_vlc_runtime():
                 pass
 
 
-def vlc_install_message():
+def load_vlc_module():
+    """Load python-vlc only after native library discovery is configured."""
+    global vlc, _VLC_IMPORT_ERROR
+    if vlc is not None:
+        return vlc
+    configure_vlc_runtime()
+    try:
+        import vlc as vlc_module
+    except Exception as exc:
+        _VLC_IMPORT_ERROR = exc
+        return None
+    vlc = vlc_module
+    _VLC_IMPORT_ERROR = None
+    return vlc
+
+
+def create_vlc_instance(*arguments):
+    """Create a usable VLC instance or raise a diagnostic error."""
+    module = load_vlc_module()
+    if module is None:
+        detail = str(_VLC_IMPORT_ERROR) if _VLC_IMPORT_ERROR else "python-vlc could not be imported"
+        raise RuntimeError(f"VLC Python binding could not be loaded: {detail}")
+    instance = module.Instance(*arguments)
+    if instance is None:
+        raise RuntimeError(
+            "libVLC loaded but returned no instance. The VLC core and plugin versions may not match."
+        )
+    return instance
+
+
+def vlc_install_message(detail=None):
     if sys.platform.startswith("win"):
         install = "Install the 64-bit VLC desktop application from videolan.org."
     elif sys.platform == "darwin":
         install = "Install the Universal VLC application from videolan.org and place VLC.app in Applications."
     else:
-        install = "Install VLC with your distribution's package manager (for example: sudo apt install vlc)."
-    source_note = "\nFor source runs, also install the Python binding: python3 -m pip install python-vlc"
-    return f"{install}{source_note}\n\nRestart IPT after installation."
+        install = (
+            "Install or repair the system VLC package that matches this Linux distribution:\n"
+            "Fedora: sudo dnf install vlc\n"
+            "Ubuntu/Debian: sudo apt update && sudo apt install vlc\n\n"
+            "The packaged IPT app uses the distribution's matching libVLC core and plugins."
+        )
+    source_note = ""
+    if not getattr(sys, "frozen", False):
+        source_note = "\nFor source runs, also install the Python binding: python3 -m pip install python-vlc"
+    detail_note = f"\n\nTechnical detail: {detail}" if detail else ""
+    return f"{install}{source_note}{detail_note}\n\nRestart IPT after installation."
+
+
+def apply_vlc_volume(player, volume):
+    """Defer volume until the native audio output is running (PipeWire safety)."""
+    if player is None or not player.is_playing():
+        return False
+    return player.audio_set_volume(volume) == 0
+
+
+def run_vlc_self_test(output=print, real_audio=False):
+    """Exercise packaged libVLC discovery and basic transport without a GUI."""
+    instance = None
+    player = None
+    media = None
+    try:
+        arguments = ["--no-video", "--intf=dummy", "--no-video-title-show", "--quiet"]
+        if not real_audio:
+            arguments.append("--aout=dummy")
+        instance = create_vlc_instance(*arguments)
+        player = instance.media_player_new()
+        if player is None:
+            raise RuntimeError("libVLC could not create a media player")
+        with tempfile.TemporaryDirectory(prefix="ipt-vlc-") as temp_dir:
+            audio_path = Path(temp_dir) / "vlc-self-test.wav"
+            with wave.open(str(audio_path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(8000)
+                audio.writeframes(b"\x00\x00" * 16000)
+            media = instance.media_new(str(audio_path))
+            if media is None:
+                raise RuntimeError("libVLC could not create test media")
+            player.set_media(media)
+            if player.play() == -1:
+                raise RuntimeError("libVLC rejected the generated WAV test file")
+            deadline = time.monotonic() + 8.0
+            started = False
+            while time.monotonic() < deadline:
+                state = player.get_state()
+                if player.get_time() >= 0 and str(state).lower() in {
+                    "state.playing", "playing", "state.paused", "paused",
+                    "state.ended", "ended",
+                }:
+                    started = True
+                    break
+                time.sleep(0.05)
+            if not started:
+                raise RuntimeError(
+                    "libVLC did not start WAV playback; its access/demux plugins may be unavailable"
+                )
+            if real_audio:
+                if not apply_vlc_volume(player, 40):
+                    raise RuntimeError("Real audio output did not accept the volume update")
+                time.sleep(0.3)
+            player.set_pause(1)
+            player.set_time(250)
+            player.set_pause(0)
+            player.stop()
+        output("VLC self-test passed: instance, WAV playback, pause, seek, and stop are available.")
+        output("Audio output: " + ("system backend; volume update passed" if real_audio else "dummy (real audio not tested)"))
+        return 0
+    except Exception as exc:
+        output("VLC self-test failed.")
+        output(vlc_install_message(exc))
+        return 1
+    finally:
+        for resource in (media, player, instance):
+            if resource is not None and hasattr(resource, "release"):
+                with contextlib.suppress(Exception):
+                    resource.release()
 
 
 def parse_platformio_envs(platformio_ini):
@@ -2278,7 +2527,13 @@ class IgnitronApp(tk.Tk):
         if show_setup:
             show_setup()
 
-    def request_serial_start(self, page):
+    def request_serial_start(self, page, on_ready=None):
+        firmware = self.pages.get("firmware")
+        if firmware is not page and getattr(firmware, "running", False):
+            page.append_log("Firmware or serial monitor is using USB. Finish or stop that task before connecting.\n")
+            self.set_status("USB is in use by Firmware")
+            page.finish()
+            return
         selected_port = getattr(page, "selected_port", None)
         if callable(selected_port):
             self.apply_serial_port(selected_port(), save_platformio=True)
@@ -2286,9 +2541,26 @@ class IgnitronApp(tk.Tk):
         if previous and previous is not page and getattr(previous, "running", False):
             previous.stop_serial(f"{page.tool_title} started")
             self.set_status(f"Stopped {previous.tool_title}; starting {page.tool_title}")
-            time.sleep(0.25)
         self.active_serial_page = page
         self.update_global_usb_status()
+        if on_ready is not None:
+            deadline = time.monotonic() + 8.0
+
+            def wait_for_release():
+                if self.active_serial_page is not page or page.stop_event.is_set():
+                    page.finish()
+                    return
+                if previous is not page and previous and previous.running:
+                    if time.monotonic() >= deadline:
+                        page.append_log("Previous USB tool has not stopped. End its connection and try again.\n")
+                        self.set_status("USB connection handoff timed out")
+                        page.finish()
+                    else:
+                        self.after(50, wait_for_release)
+                    return
+                on_ready()
+
+            self.after(0, wait_for_release)
 
     def release_serial_page(self, page):
         if self.active_serial_page is page:
@@ -2707,10 +2979,15 @@ class BuilderPage(Page):
         update_settings(preset_library_folder=self.library_folder)
         self.presets = []
         for path in sorted(self.library_folder.rglob("*.json"), key=lambda p: p.name.lower()):
+            if any(part in {"_ipt_backups", "_ipt_duplicate_backups"}
+                   for part in path.relative_to(self.library_folder).parts):
+                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
             except Exception:
-                data = {}
+                continue
+            if not isinstance(data, dict) or not isinstance(data.get("Pedals"), list):
+                continue
             self.presets.append({
                 "filename": path.name,
                 "name": str(data.get("Name", path.stem)),
@@ -3012,6 +3289,15 @@ class BuilderPage(Page):
             self.choose_output_folder()
         if not self.output_folder:
             return False
+        selected = {name for name in self.slots.values() if name}
+        by_filename = {}
+        for preset in self.presets:
+            name = preset["filename"]
+            if name in selected and name in by_filename and preset["data"] != by_filename[name]["data"]:
+                messagebox.showerror("Ambiguous preset filename",
+                    f"Different presets share the filename {name}. Choose a library folder with unique filenames before exporting.")
+                return False
+            by_filename[name] = preset
         self.output_folder.mkdir(parents=True, exist_ok=True)
         backup_root = self.output_folder / "_ipt_backups"
         backed_up = []
@@ -3048,6 +3334,10 @@ class BuilderPage(Page):
                             and source_path.exists()
                             and source_path.resolve() != destination.resolve()
                         ):
+                            if destination.exists() and source_path.read_bytes() != destination.read_bytes():
+                                backup = backup_file(destination, backup_root)
+                                if backup:
+                                    backed_up.append(backup)
                             shutil.copy2(source_path, destination)
                             copied_files.add(source_path.name)
                             copied += 1
@@ -3321,7 +3611,7 @@ class BackingTracksPage(Page):
         self.favorite_paths = {
             str(Path(path)) for path in load_settings().get("backing_tracks_favorites", [])
         }
-        self.folder_var = tk.StringVar(value=load_saved_path("backing_tracks_folder"))
+        self.folder_var = tk.StringVar(value=load_settings().get("backing_tracks_folder", ""))
         self.now_playing_var = tk.StringVar(value="No track selected")
         self.time_var = tk.StringVar(value="0:00 / 0:00")
         self.library_status_var = tk.StringVar(value="Choose a backing-track folder")
@@ -3338,9 +3628,13 @@ class BackingTracksPage(Page):
         folder_bar.pack(fill="x", padx=34, pady=(0, 12), ipady=10)
         tk.Label(folder_bar, text="MUSIC FOLDER", bg=SURFACE, fg=GOLD,
                  font=("Segoe UI Semibold", 9)).pack(side="left", padx=(18, 10))
-        ttk.Entry(folder_bar, textvariable=self.folder_var).pack(
-            side="left", fill="x", expand=True, padx=(0, 10)
+        self.folder_combo = ttk.Combobox(
+            folder_bar, textvariable=self.folder_var,
+            values=load_settings().get("backing_tracks_locations", []),
         )
+        self.folder_combo.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.folder_combo.bind("<<ComboboxSelected>>", lambda _event: self.load_library())
+        self.folder_combo.bind("<Return>", lambda _event: self.load_library())
         ttk.Button(folder_bar, text="Reload", style="Dark.TButton",
                    command=self.load_library).pack(side="left", padx=(0, 8))
         ttk.Button(folder_bar, text="Choose folder", style="Gold.TButton",
@@ -3532,37 +3826,44 @@ class BackingTracksPage(Page):
         self.search_job = None
 
     def initialize_player(self):
-        if vlc is None:
-            self.library_status_var.set(
-                "Playback engine unavailable - install VLC and the Python package 'python-vlc'."
-            )
-            return False
         try:
-            configure_vlc_runtime()
-            self.vlc_instance = vlc.Instance("--no-video-title-show", "--quiet")
+            self.vlc_instance = create_vlc_instance("--no-video-title-show", "--quiet")
             self.player = self.vlc_instance.media_player_new()
-            self.player.audio_set_volume(self.volume_var.get())
+            if self.player is None:
+                raise RuntimeError("libVLC could not create a media player")
+            self.applied_volume = None
+            self.vlc_error_detail = None
             return True
         except Exception as exc:
             self.player = None
-            self.library_status_var.set(f"VLC could not start: {exc}")
+            self.vlc_instance = None
+            self.vlc_error_detail = str(exc)
+            if sys.platform.startswith("linux"):
+                action = "Install system VLC (Fedora: dnf install vlc; Ubuntu/Debian: apt install vlc)."
+            else:
+                action = "Install the native VLC desktop application, then restart IPT."
+            self.library_status_var.set(f"VLC could not start. {action}")
             return False
 
     def choose_folder(self):
         initial = self.folder_var.get() or str(Path.home())
-        folder = filedialog.askdirectory(title="Choose backing-track library", initialdir=initial)
+        folder = choose_music_folder(initial)
         if not folder:
             return
         self.folder_var.set(folder)
-        update_settings(backing_tracks_folder=folder)
         self.load_library()
 
     def load_library(self):
-        root = Path(self.folder_var.get()).expanduser()
-        if not root.is_dir():
-            self.library_status_var.set("Choose a valid backing-track folder")
+        location = self.folder_var.get().strip()
+        try:
+            root = resolve_music_folder(location)
+        except (OSError, ValueError) as exc:
+            self.library_status_var.set(str(exc))
             return
-        update_settings(backing_tracks_folder=str(root.resolve()))
+        locations = [location] + [p for p in load_settings().get("backing_tracks_locations", []) if p != location]
+        locations = locations[:12]
+        update_settings(backing_tracks_folder=location, backing_tracks_locations=locations)
+        self.folder_combo.configure(values=locations)
         self.tree.delete(*self.tree.get_children())
         self.track_paths.clear()
         self.track_catalog.clear()
@@ -3799,7 +4100,7 @@ class BackingTracksPage(Page):
             return True
         messagebox.showerror(
             "VLC playback unavailable",
-            vlc_install_message(),
+            vlc_install_message(getattr(self, "vlc_error_detail", None)),
         )
         return False
 
@@ -3817,8 +4118,8 @@ class BackingTracksPage(Page):
         self.current_index = self.play_order.index(item_id)
         media = self.vlc_instance.media_new(str(path))
         self.player.set_media(media)
+        self.applied_volume = None
         self.player.play()
-        self.player.audio_set_volume(self.volume_var.get())
         self.tree.selection_set(item_id)
         self.tree.see(item_id)
         artist, album, _duration = self.tree.item(item_id, "values")
@@ -3868,9 +4169,14 @@ class BackingTracksPage(Page):
     def set_volume(self, value):
         volume = max(0, min(100, int(float(value))))
         self.volume_text_var.set(f"{volume}%")
-        if self.player:
-            self.player.audio_set_volume(volume)
+        self.apply_pending_volume()
         update_settings(backing_tracks_volume=volume)
+
+    def apply_pending_volume(self):
+        volume = self.volume_var.get()
+        if getattr(self, "applied_volume", None) != volume:
+            if apply_vlc_volume(self.player, volume):
+                self.applied_volume = volume
 
     def adjust_volume(self, change):
         volume = max(0, min(100, self.volume_var.get() + change))
@@ -3929,6 +4235,7 @@ class BackingTracksPage(Page):
     def update_playback(self):
         try:
             if self.player:
+                self.apply_pending_volume()
                 length = max(0, self.player.get_length())
                 current = max(0, self.player.get_time())
                 if not self.user_seeking and length:
@@ -5571,7 +5878,7 @@ class FirmwareUploadPage(Page):
         self.load_project_defaults()
 
     def bundled_firmware_dir(self):
-        return first_resource_path(*FIRMWARE_FOLDER_NAMES)
+        return first_resource_path("firmware templates/ignitron firmware", *FIRMWARE_FOLDER_NAMES)
 
     def _write_ipt_setup_log(self, text):
         log = getattr(self, "ipt_setup_log", None)
@@ -6410,6 +6717,10 @@ class FirmwareUploadPage(Page):
             messagebox.showinfo("PresetList PDF not found", f"No PresetList.pdf exists yet at:\n{pdf_path}")
 
     def validate_project(self, check_erase=True):
+        active = self.app.active_serial_page
+        if active and getattr(active, "running", False):
+            messagebox.showinfo("USB is in use", f"End the {active.tool_title} connection before starting a Firmware task.")
+            return False
         if not self.project_dir.exists():
             messagebox.showerror("Project not found", f"Project folder does not exist:\n{self.project_dir}")
             return False
@@ -6585,10 +6896,11 @@ class FirmwareUploadPage(Page):
             # Never erase a working pedal until the selected firmware has
             # compiled successfully.
             targets.append("")
+            targets.append("buildfs")
             if self.erase_var.get():
                 targets.append("erase")
             targets.append("upload")
-            targets.extend(("buildfs", "uploadfs"))
+            targets.append("uploadfs")
 
             for target in targets:
                 code = self._run_platformio_target(target)
@@ -6863,22 +7175,26 @@ class SerialPage(Page):
         self.log.configure(state="disabled")
 
     def start(self):
-        port = self.auto_select_port()
-        if not port:
-            self.connection_state_var.set("No pedal connected")
-            messagebox.showinfo(
-                "No pedal connected",
-                "No Ignitron pedal answered over USB. Connect the ESP32 pedal, then try again.",
-            )
-            return
         if self.running:
             return
-        self.app.request_serial_start(self)
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
         self.running = True
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
-        self.update_connection_indicator(True)
-        threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        self.app.request_serial_start(
+            self, on_ready=lambda: threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        )
+
+    def serial_connected(self, port):
+        if not self.stop_event.is_set():
+            self.app.remember_serial_port(port, verified=True)
+            self.update_connection_indicator(True)
 
     def stop_serial(self, reason="another serial tool started"):
         if not self.running:
@@ -7027,6 +7343,8 @@ class TunerPage(SerialPage):
         connection = None
         try:
             connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            self.after(0, self.serial_connected, port)
             connection.write(b"TUNERSTREAM ON\n")
             while self.winfo_exists() and not self.stop_event.is_set():
                 line = connection.readline().decode(errors="ignore").strip()
@@ -7224,6 +7542,8 @@ class DisplayMirrorPage(SerialPage):
         connection = None
         try:
             connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            self.after(0, self.serial_connected, port)
             connection.write(b"MIRROR ON\n")
             while self.winfo_exists() and not self.stop_event.is_set():
                 line = connection.readline().decode(errors="ignore").strip()
@@ -7692,8 +8012,8 @@ class PedalRemotePage(SerialPage):
                     text=button_text,
                     bg=CARD_ALT,
                     fg=TEXT,
-                    activebackground=ORANGE,
-                    activeforeground="white",
+                    activebackground=BORDER,
+                    activeforeground=TEXT,
                     relief="flat",
                     bd=0,
                     width=8 if bank == 1 else 5,
@@ -7972,9 +8292,29 @@ class PedalRemotePage(SerialPage):
         return "break"
 
     def start(self):
-        super().start()
         if self.running:
-            self.stop_button.configure(state="normal")
+            return
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
+        self.running = True
+        self.stop_event.clear()
+        self.start_button.configure(state="disabled")
+        self.stop_button.configure(state="normal")
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        self.app.request_serial_start(
+            self, on_ready=lambda: threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+        )
+
+    def remote_connected(self, port):
+        if self.stop_event.is_set():
+            return
+        self.app.remember_serial_port(port, verified=True)
+        self.update_connection_indicator(True)
+        self.app.set_status("Pedal Remote connected")
 
     def stop_serial(self, reason="user stopped remote"):
         super().stop_serial(reason)
@@ -8059,8 +8399,8 @@ class PedalRemotePage(SerialPage):
                     text=label,
                     bg=CARD_ALT if filename else "#161922",
                     fg=TEXT if filename else MUTED,
-                    activebackground=ORANGE,
-                    activeforeground="white",
+                    activebackground=BORDER,
+                    activeforeground=TEXT,
                     relief="flat",
                     bd=0,
                     height=1,
@@ -8234,19 +8574,25 @@ class PedalRemotePage(SerialPage):
         self.stop_pending_bank_flash()
         if self.active_hw_cell:
             try:
-                self.active_hw_cell.configure(bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_hw_cell.configure(
+                    bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
             self.active_hw_cell = None
         if self.active_cell:
             try:
-                self.active_cell.configure(bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_cell.configure(
+                    bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
         cell = self.preset_cells.get((bank, preset))
         self.active_cell = cell
         if cell:
-            cell.configure(bg=ORANGE, fg="white")
+            cell.configure(bg=ORANGE, fg="white", activebackground=ORANGE, activeforeground="white")
         self.current_slot_var.set(f"{bank:02d}-{preset}")
         self.current_preset_var.set(label)
         self.draw_current_preset_display()
@@ -8255,19 +8601,25 @@ class PedalRemotePage(SerialPage):
         self.stop_pending_bank_flash()
         if self.active_cell:
             try:
-                self.active_cell.configure(bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_cell.configure(
+                    bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
             self.active_cell = None
         if self.active_hw_cell:
             try:
-                self.active_hw_cell.configure(bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_hw_cell.configure(
+                    bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
         cell = self.hw_preset_cells.get((bank, preset))
         self.active_hw_cell = cell
         if cell:
-            cell.configure(bg=ORANGE, fg="white")
+            cell.configure(bg=ORANGE, fg="white", activebackground=ORANGE, activeforeground="white")
         self.current_slot_var.set(f"HW{bank}-{preset}")
         self.current_preset_var.set(label)
         self.draw_current_preset_display()
@@ -8389,14 +8741,21 @@ class PedalRemotePage(SerialPage):
         connection = None
         detected_end_reason = ""
         try:
-            connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            connection = open_serial_no_reset(port, 115200, timeout=0.1)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            if self.stop_event.is_set():
+                return
             self.connection = connection
             self.after(0, self.update_remote_terminal_status)
             self.update_hw_bank_visibility(1)
             self.update_hardware_indicator(1, "")
             self.send_remote_serial_line("HWINFO")
-            self.app.set_status("Pedal Remote connected")
+            self.after(0, self.remote_connected, port)
+            next_hwinfo = time.monotonic() + 3.0
             while self.winfo_exists() and not self.stop_event.is_set():
+                if time.monotonic() >= next_hwinfo:
+                    self.send_remote_serial_line("HWINFO")
+                    next_hwinfo = time.monotonic() + 3.0
                 line = connection.readline().decode(errors="ignore").strip()
                 if not line:
                     continue
@@ -8468,8 +8827,8 @@ class PedalRemotePage(SerialPage):
             if self.stop_event.is_set():
                 self.append_log("\nPedal Remote connection ended.\n")
             else:
-                detected_end_reason = "Pedal USB disconnected or reset — Pedal Remote ended"
-                self.append_log(f"\nSerial connection closed: {exc}\n")
+                detected_end_reason = f"Pedal Remote connection failed: {exc}"
+                self.append_log(f"\n{detected_end_reason}\n")
                 self.handle_detected_serial_end(detected_end_reason)
         finally:
             self.connection = None
@@ -8510,7 +8869,7 @@ class CapturePage(SerialPage):
                  bg=CARD, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 0))
         actions = tk.Frame(backup, bg=CARD)
         actions.pack(side="right", padx=16, pady=13)
-        self.pull_active_button = ttk.Button(actions, text="Pull active bank", style="Dark.TButton",
+        self.pull_active_button = ttk.Button(actions, text="Pull listed presets", style="Dark.TButton",
                                              command=lambda: self.start_backup(True))
         self.pull_active_button.pack(side="left", padx=(0, 8))
         self.pull_all_button = ttk.Button(actions, text="Pull full library", style="Gold.TButton",
@@ -8522,30 +8881,38 @@ class CapturePage(SerialPage):
         self.pull_all_button.configure(state=state)
 
     def start(self):
-        super().start()
-        if self.running:
-            self.stop_button.configure(state="normal")
-            self.set_action_state("disabled")
+        self._start_task(self.run_tool)
 
     def start_backup(self, active_only):
-        port = self.auto_select_port()
-        if not port:
-            self.connection_state_var.set("No pedal connected")
-            messagebox.showinfo(
-                "No pedal connected",
-                "No Ignitron pedal answered over USB. Connect the ESP32 pedal, then try again.",
-            )
-            return
+        self._start_task(self.run_backup, active_only)
+
+    def _start_task(self, target, *args):
         if self.running:
             return
-        self.app.request_serial_start(self)
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
         self.running = True
         self.stop_event.clear()
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
         self.set_action_state("disabled")
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        self.app.set_status("Preparing Spark Capture USB connection...")
+        self.app.request_serial_start(
+            self,
+            on_ready=lambda: threading.Thread(target=target, args=(port, *args), daemon=True).start(),
+        )
+
+    def capture_connected(self, port):
+        if self.stop_event.is_set():
+            return
+        self.app.remember_serial_port(port, verified=True)
         self.update_connection_indicator(True)
-        threading.Thread(target=self.run_backup, args=(port, active_only), daemon=True).start()
+        self.app.set_status("Spark Capture connected in AMP mode")
 
     def stop_capture(self):
         if not self.running:
@@ -8565,15 +8932,14 @@ class CapturePage(SerialPage):
         self.set_action_state("normal")
 
     def run_backup(self, port, active_only):
-        scope = "active bank" if active_only else "full preset library"
+        scope = "presets listed in PresetList.txt" if active_only else "full preset library"
         self.append_log(f"Starting {scope} backup from {port}...\n")
         mode_connection = None
         capture_mode_entered = False
         try:
             mode_connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
-            mode_connection.close()
-            mode_connection = None
+            self.after(0, self.capture_connected, port)
             backup_root = self.app.project_dir / "backups"
             backup_root.mkdir(parents=True, exist_ok=True)
             self.append_log(f"Saving backups to {backup_root}\n")
@@ -8585,7 +8951,7 @@ class CapturePage(SerialPage):
             with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
                 module.pull_presets(
                     port, 115200, active_only, False, backup_root, self.stop_event,
-                    capture_keepalive=True,
+                    capture_keepalive=True, connection=mode_connection,
                 )
             if self.stop_event.is_set():
                 self.append_log("\nBackup stopped.\n")
@@ -8594,88 +8960,109 @@ class CapturePage(SerialPage):
                 self.append_log("\nBackup complete.\n")
                 open_folder(backup_root)
                 self.app.set_status("Pedal backup completed")
+        except InterruptedError:
+            self.append_log("\nBackup stopped.\n")
+            self.after(0, self.app.set_status, "Pedal backup stopped")
         except Exception as exc:
             self.append_log(f"\nBackup failed: {exc}\n")
             self.app.set_status("Pedal backup failed")
         finally:
+            if capture_mode_entered and mode_connection:
+                self._return_to_app_mode(connection=mode_connection)
             try:
                 if mode_connection:
                     mode_connection.close()
             except Exception:
                 pass
-            if capture_mode_entered:
-                self._return_to_app_mode(port=port)
             self.after(0, self.finish)
 
     def _enter_capture_amp_mode(self, port):
-        """Request one-shot AMP mode and return a serial connection after reboot."""
-        self.append_log("Requesting automatic AMP mode for Spark Capture...\n")
-        connection = open_serial_no_reset(port, 115200, timeout=0.35)
-        try:
+        """Verify USB, enter temporary AMP mode, and restore APP mode on failure."""
+        mode_requested = False
+        with contextlib.ExitStack() as cleanup:
+            # Run after every owned serial handle closes, including cancellation
+            # during the expected reboot before a capture session is ready.
+            def restore_on_failure():
+                if mode_requested:
+                    self._return_to_app_mode(port=port)
+            cleanup.callback(restore_on_failure)
+            self.append_log("Requesting automatic AMP mode for Spark Capture...\n")
+            connection = open_serial_no_reset(port, 115200, timeout=0.35)
+            cleanup.callback(connection.close)
             try:
-                connection.reset_input_buffer()
-            except Exception:
-                pass
-            connection.write(b"CAPTUREMODE\n")
-            connection.flush()
-            deadline = time.monotonic() + 4.0
-            restarting = False
-            while time.monotonic() < deadline and not self.stop_event.is_set():
-                line = connection.readline().decode(errors="ignore").strip()
-                if not line:
-                    continue
-                self.append_log(line + "\n")
-                if line == "OK CAPTUREMODE READY":
-                    connection.write(b"CAPTUREKEEPALIVE\n")
-                    connection.flush()
-                    self.append_log("Ignitron is already in AMP mode.\n\n")
-                    return connection
-                if line == "OK CAPTUREMODE RESTARTING":
-                    restarting = True
-                    break
-                if line.startswith("ERR CAPTUREMODE"):
-                    raise RuntimeError(f"Ignitron rejected automatic AMP mode: {line}")
-            if not restarting:
-                raise RuntimeError(
-                    "This firmware does not support automatic Spark Capture AMP mode. "
-                    "Apply the current required IPT 2.1 firmware changes and flash again."
-                )
-        except Exception:
-            connection.close()
-            raise
-
-        connection.close()
-        self.append_log("Ignitron is restarting in AMP mode...\n")
-        reconnect_deadline = time.monotonic() + 18.0
-        last_error = None
-        while time.monotonic() < reconnect_deadline and not self.stop_event.is_set():
-            time.sleep(0.5)
-            candidate = None
-            try:
-                candidate = open_serial_no_reset(port, 115200, timeout=0.35)
-                candidate.write(b"PING\n")
-                candidate.flush()
-                ping_deadline = time.monotonic() + 1.5
-                while time.monotonic() < ping_deadline:
-                    line = candidate.readline().decode(errors="ignore").strip()
+                verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+                if self.stop_event.is_set():
+                    raise InterruptedError("Spark Capture connection cancelled")
+                self.after(0, self.connection_state_var.set, "Starting AMP mode...")
+                mode_requested = True
+                connection.write(b"CAPTUREMODE\n")
+                connection.flush()
+                deadline = time.monotonic() + 4.0
+                restarting = False
+                while time.monotonic() < deadline and not self.stop_event.is_set():
+                    line = connection.read_until(size=1024).decode(errors="ignore").strip()
                     if not line:
                         continue
                     self.append_log(line + "\n")
-                    if line.startswith("IGNITRON_FLASHER"):
-                        candidate.write(b"CAPTUREKEEPALIVE\n")
-                        candidate.flush()
-                        self.append_log("Automatic AMP mode is ready.\n\n")
-                        return candidate
-                candidate.close()
-            except Exception as exc:
-                last_error = exc
+                    if line == "OK CAPTUREMODE READY":
+                        connection.write(b"CAPTUREKEEPALIVE\n")
+                        connection.flush()
+                        self.append_log("Ignitron is already in AMP mode.\n\n")
+                        cleanup.pop_all()
+                        return connection
+                    if line == "OK CAPTUREMODE RESTARTING":
+                        restarting = True
+                        break
+                    if line.startswith("ERR CAPTUREMODE"):
+                        raise RuntimeError(f"Ignitron rejected automatic AMP mode: {line}")
+                if self.stop_event.is_set():
+                    raise InterruptedError("Spark Capture connection cancelled")
+                if not restarting:
+                    raise RuntimeError(
+                        "This firmware does not support automatic Spark Capture AMP mode. "
+                        "Apply the current required IPT 2.1 firmware changes and flash again."
+                    )
+            except Exception:
+                connection.close()
+                raise
+
+            connection.close()
+            self.append_log("Ignitron is restarting in AMP mode...\n")
+            reconnect_deadline = time.monotonic() + 18.0
+            last_error = None
+            while time.monotonic() < reconnect_deadline and not self.stop_event.is_set():
+                if self.stop_event.wait(0.5):
+                    break
+                candidate = None
                 try:
-                    if candidate:
-                        candidate.close()
-                except Exception:
-                    pass
-        detail = f" ({last_error})" if last_error else ""
-        raise RuntimeError(f"Ignitron did not reconnect after entering AMP mode{detail}")
+                    candidate = open_serial_no_reset(port, 115200, timeout=0.35)
+                    cleanup.callback(candidate.close)
+                    candidate.write(b"PING\n")
+                    candidate.flush()
+                    ping_deadline = time.monotonic() + 1.5
+                    while time.monotonic() < ping_deadline and not self.stop_event.is_set():
+                        line = candidate.read_until(size=1024).decode(errors="ignore").strip()
+                        if not line:
+                            continue
+                        self.append_log(line + "\n")
+                        if line.startswith("IGNITRON_FLASHER"):
+                            candidate.write(b"CAPTUREKEEPALIVE\n")
+                            candidate.flush()
+                            self.append_log("Automatic AMP mode is ready.\n\n")
+                            cleanup.pop_all()
+                            return candidate
+                    candidate.close()
+                except Exception as exc:
+                    last_error = exc
+                    try:
+                        if candidate:
+                            candidate.close()
+                    except Exception:
+                        pass
+            if self.stop_event.is_set():
+                raise InterruptedError("Spark Capture connection cancelled")
+            detail = f" ({last_error})" if last_error else ""
+            raise RuntimeError(f"Ignitron did not reconnect after entering AMP mode{detail}")
 
     def _return_to_app_mode(self, connection=None, port=None):
         """End temporary Capture mode and reboot through the normal APP path."""
@@ -8690,9 +9077,13 @@ class CapturePage(SerialPage):
                 pass
             connection.write(b"CAPTUREEND\n")
             connection.flush()
-            deadline = time.monotonic() + 2.5
+            deadline = time.monotonic() + 5.0
+            next_request = time.monotonic() + 0.5
             while time.monotonic() < deadline:
-                line = connection.readline().decode(errors="ignore").strip()
+                if time.monotonic() >= next_request:
+                    connection.write(b"CAPTUREEND\n")
+                    next_request = time.monotonic() + 0.5
+                line = connection.read_until(size=1024).decode(errors="ignore").strip()
                 if not line:
                     continue
                 self.append_log(line + "\n")
@@ -8721,20 +9112,20 @@ class CapturePage(SerialPage):
 
     def run_tool(self, port):
         self.append_log(f"Preparing Spark Capture on {port} at 115200 baud...\n")
-        session = self.app.project_dir / "captures" / time.strftime("presets_%Y%m%d_%H%M%S")
-        session.mkdir(parents=True, exist_ok=True)
-        self.append_log(f"Saving captures to {session}\n\n")
         connection = None
         capture_mode_entered = False
         detected_serial_end = False
         try:
+            capture_root = self.app.project_dir / "captures"
+            capture_root.mkdir(parents=True, exist_ok=True)
+            session = Path(tempfile.mkdtemp(prefix=time.strftime("presets_%Y%m%d_%H%M%S_"), dir=capture_root))
+            self.append_log(f"Saving captures to {session}\n\n")
             connection = self._enter_capture_amp_mode(port)
             capture_mode_entered = True
+            self.after(0, self.capture_connected, port)
             connection.timeout = 0.5
             self.append_log("Listening for presets from the Spark app...\n\n")
-            buffer = ""
-            capturing = False
-            last_uuid = None
+            decoder = PresetCaptureDecoder()
             next_keepalive = 0.0
             expected_restart_until = 0.0
             while self.winfo_exists() and not self.stop_event.is_set():
@@ -8744,6 +9135,8 @@ class CapturePage(SerialPage):
                     next_keepalive = time.monotonic() + 2.0
                 line = connection.readline().decode(errors="ignore").rstrip()
                 if not line:
+                    continue
+                if line == "OK CAPTUREKEEPALIVE" or line.startswith("IGNITRON_FLASHER "):
                     continue
                 self.append_log(line + "\n")
                 upper = line.upper()
@@ -8758,29 +9151,16 @@ class CapturePage(SerialPage):
                     break
                 if "CAPTUREMODE AUTO AMP (ONE SHOT)" in upper:
                     expected_restart_until = 0.0
-                if line == "OK CAPTUREKEEPALIVE":
-                    continue
-                if line.startswith("received from app:") or line.startswith("JSON STRING:"):
-                    buffer = ""
-                    capturing = True
-                    continue
-                if capturing:
-                    buffer += line + "\n"
-                    if line.strip().endswith("}"):
-                        capturing = False
-                        try:
-                            preset = json.loads(buffer)
-                            uuid = preset.get("UUID")
-                            if uuid == last_uuid:
-                                continue
-                            last_uuid = uuid
-                            name = re.sub(r"[^A-Za-z0-9_-]+", "", str(preset.get("Name", "preset"))) or "preset"
-                            output = session / f"{name}.json"
-                            output.write_text(json.dumps(preset, indent=2), encoding="utf-8")
+                try:
+                    preset = decoder.feed(line)
+                    if preset is not None:
+                        output, created = save_captured_preset(session, preset)
+                        if created:
                             self.append_log(f"SAVED: {output.name}\n")
-                            self.app.set_status(f"Captured {output.name}")
-                        except Exception as exc:
-                            self.append_log(f"Could not parse preset: {exc}\n")
+                            self.after(0, self.app.set_status, f"Captured {output.name}")
+                except (ValueError, OSError) as exc:
+                    self.append_log(f"Could not save preset: {exc}\n")
+                    self.after(0, self.app.set_status, f"Capture save failed: {exc}")
             if not detected_serial_end:
                 self.append_log("\nSpark capture connection ended.\n")
                 self.after(0, self.app.set_status, "Spark capture stopped")
@@ -8806,4 +9186,11 @@ class CapturePage(SerialPage):
 
 
 if __name__ == "__main__":
+    if "--serial-self-test" in sys.argv:
+        index = sys.argv.index("--serial-self-test")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit("Usage: --serial-self-test /dev/ttyUSB0")
+        raise SystemExit(run_serial_self_test(sys.argv[index + 1]))
+    if "--vlc-self-test" in sys.argv or "--vlc-audio-self-test" in sys.argv:
+        raise SystemExit(run_vlc_self_test(real_audio="--vlc-audio-self-test" in sys.argv))
     IgnitronApp().mainloop()

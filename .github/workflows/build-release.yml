@@ -35,11 +35,12 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
       - name: Compile Python sources
-        run: python -m py_compile ignitron_preset_tools_v2.1.py preset_puller.py preset_chart.py preset_converter.py release_tools.py
+        run: python -m py_compile ignitron_preset_tools_v2.1.py preset_capture.py preset_puller.py preset_chart.py preset_converter.py release_tools.py
       - name: Run tests
+        timeout-minutes: 3
         env:
           IGNITRON_BASELINE: Ignitron 1.9.0
-        run: python -m unittest -v
+        run: python -u -c "import faulthandler, unittest; faulthandler.dump_traceback_later(60, exit=True); unittest.main(module=None, argv=['unittest', 'discover', '-v'])"
       - name: Verify clean dual-firmware source staging
         if: runner.os == 'Linux'
         run: python release_tools.py stage-source . "${RUNNER_TEMP}/ipt-source-release"
@@ -59,7 +60,7 @@ jobs:
         run: ./build_release.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.00-Windows-x64
+          name: Ignitron-Preset-Tools-v2.1.01-Windows-x64
           path: release/*Windows-x64.zip
           if-no-files-found: error
 
@@ -87,7 +88,7 @@ jobs:
           ./build_release_mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.00-macOS-${{ matrix.arch }}
+          name: Ignitron-Preset-Tools-v2.1.01-macOS-${{ matrix.arch }}
           path: release/*macOS-${{ matrix.arch }}.zip
           if-no-files-found: error
 
@@ -115,9 +116,15 @@ jobs:
         run: |
           chmod +x build_release_linux.sh
           ./build_release_linux.sh
+      - name: Verify packaged Linux VLC runtime
+        shell: bash
+        run: |
+          package_dir=$(find release -maxdepth 1 -type d -name '*Linux-${{ matrix.arch }}' -print -quit)
+          test -n "$package_dir"
+          "$package_dir/app/ignitron-preset-tools" --vlc-self-test
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.00-Linux-${{ matrix.arch }}
+          name: Ignitron-Preset-Tools-v2.1.01-Linux-${{ matrix.arch }}
           path: release/*Linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
@@ -148,6 +155,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
+          for package in artifacts/*; do
+            canonical="${package// /.}"
+            if [[ "$package" != "$canonical" ]]; then mv "$package" "$canonical"; fi
+          done
+          cp Linux-Install-Guide.pdf artifacts/
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "Ignitron Preset Tools $RELEASE_TAG" --notes-file GITHUB_RELEASE.md
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
           gh release upload "$RELEASE_TAG" artifacts/* --clobber
+          gh release edit "$RELEASE_TAG" --notes-file GITHUB_RELEASE.md

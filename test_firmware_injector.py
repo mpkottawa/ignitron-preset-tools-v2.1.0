@@ -392,6 +392,127 @@ const int BATTERY_VOLTAGE_ADC_PIN = 36;
 
 
 class CrossPlatformReleaseTests(unittest.TestCase):
+    def test_music_location_accepts_local_folder_with_spaces(self):
+        with tempfile.TemporaryDirectory(prefix="music folder ") as folder:
+            self.assertEqual(Path(folder), IPT.resolve_music_folder(folder))
+
+    def test_music_location_rejects_password_in_smb_address(self):
+        with self.assertRaisesRegex(ValueError, "passwords"):
+            IPT.resolve_music_folder("smb://user:secret@nas/music")
+
+    def test_music_location_resolves_kde_mount(self):
+        with tempfile.TemporaryDirectory() as folder:
+            result = SimpleNamespace(returncode=0, stdout=repr((folder,)))
+            with mock.patch.object(IPT.sys, "platform", "linux"), mock.patch.object(IPT.shutil, "which", return_value="/usr/bin/gdbus"), mock.patch.object(IPT.subprocess, "run", return_value=result):
+                self.assertEqual(Path(folder), IPT.resolve_music_folder("smb://nas/music"))
+
+    def test_volume_is_deferred_until_audio_output_is_playing(self):
+        player = mock.Mock()
+        player.is_playing.return_value = False
+        self.assertFalse(IPT.apply_vlc_volume(player, 80))
+        player.audio_set_volume.assert_not_called()
+        player.is_playing.return_value = True
+        player.audio_set_volume.return_value = 0
+        self.assertTrue(IPT.apply_vlc_volume(player, 80))
+        player.audio_set_volume.assert_called_once_with(80)
+
+    def test_volume_failure_remains_pending_for_retry(self):
+        player = mock.Mock()
+        player.is_playing.return_value = True
+        player.audio_set_volume.return_value = -1
+        self.assertFalse(IPT.apply_vlc_volume(player, 40))
+
+    def test_vlc_none_instance_is_reported_as_runtime_mismatch(self):
+        fake_vlc = SimpleNamespace(Instance=lambda *_arguments: None)
+        with mock.patch.object(IPT, "load_vlc_module", return_value=fake_vlc):
+            with self.assertRaisesRegex(RuntimeError, "core and plugin versions may not match"):
+                IPT.create_vlc_instance("--quiet")
+
+    def test_linux_vlc_failure_message_is_actionable_for_both_distro_families(self):
+        with mock.patch.object(IPT.sys, "platform", "linux"):
+            message = IPT.vlc_install_message("libVLC returned no instance")
+        self.assertIn("sudo dnf install vlc", message)
+        self.assertIn("sudo apt update && sudo apt install vlc", message)
+        self.assertIn("libVLC returned no instance", message)
+        self.assertIn("core and plugins", message)
+
+    def test_vlc_self_test_exercises_play_pause_seek_and_stop(self):
+        calls = []
+
+        class Resource:
+            def release(self):
+                calls.append("release")
+
+        class Player(Resource):
+            def set_media(self, _media):
+                calls.append("set_media")
+
+            def play(self):
+                calls.append("play")
+                return 0
+
+            def get_state(self):
+                return "State.Playing"
+
+            def get_time(self):
+                return 0
+
+            def set_pause(self, value):
+                calls.append(("pause", value))
+
+            def set_time(self, value):
+                calls.append(("seek", value))
+
+            def stop(self):
+                calls.append("stop")
+
+        player = Player()
+
+        class Instance(Resource):
+            def media_player_new(self):
+                return player
+
+            def media_new(self, path):
+                self.path = Path(path)
+                self.size = self.path.stat().st_size
+                return Resource()
+
+        output = []
+        with mock.patch.object(IPT, "create_vlc_instance", return_value=Instance()):
+            self.assertEqual(0, IPT.run_vlc_self_test(output.append))
+
+        self.assertIn("play", calls)
+        self.assertIn(("pause", 1), calls)
+        self.assertIn(("seek", 250), calls)
+        self.assertIn(("pause", 0), calls)
+        self.assertIn("stop", calls)
+        self.assertIn("VLC self-test passed", output[0])
+
+    def test_linux_package_uses_system_vlc_and_ci_tests_the_frozen_app(self):
+        build_script = (ROOT / "build_release_linux.sh").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8")
+        self.assertIn("libvlc.so*", build_script)
+        self.assertIn("libvlccore.so*", build_script)
+        self.assertIn("Removing non-portable bundled VLC library", build_script)
+        self.assertIn("--vlc-self-test", workflow)
+        self.assertIn("Verify packaged Linux VLC runtime", workflow)
+
+    def test_linux_release_documentation_covers_first_build_requirements(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for required in (
+            "sudo dnf install curl python3 vlc",
+            "sudo apt install curl python3 python3-venv vlc",
+            "get-platformio.py",
+            '"$HOME/.platformio/penv/bin/platformio" --version',
+            "99-platformio-udev.rules",
+            '"$HOME/.platformio/penv/bin/platformio" device list',
+            "ignitron firmware",
+            "Ignitron 1.9.0",
+            "run -e esp32dev -t buildfs",
+            "Port is busy",
+        ):
+            self.assertIn(required, readme)
+
     def test_restore_stock_hardware_resets_every_registered_setting(self):
         def variable(value):
             state = SimpleNamespace(value=value)
@@ -638,7 +759,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         page._run_flash_worker()
 
         self.assertEqual(
-            ["clean", "", "erase", "upload", "buildfs", "uploadfs"],
+            ["clean", "", "buildfs", "erase", "upload", "uploadfs"],
             targets,
         )
 
@@ -696,6 +817,226 @@ class CrossPlatformReleaseTests(unittest.TestCase):
             self.assertTrue(page.apply_selected_firmware_changes(show_message=False))
 
         self.assertEqual([], opened_pages)
+
+    def test_serial_handshake_retries_through_boot_without_closing(self):
+        clock = [0.0]
+        connection = mock.Mock()
+        def read(**_kwargs):
+            clock[0] += 0.2
+            return b"BOOT 90 WAITING_FOR_AMP\n" if clock[0] < 2 else b"IGNITRON_FLASHER 1\n"
+        connection.read_until.side_effect = read
+        with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
+            IPT.verify_ignitron_connection(connection)
+        self.assertGreaterEqual(connection.write.call_count, 2)
+        connection.close.assert_not_called()
+        connection.reset_input_buffer.assert_called_once()
+
+    def test_serial_handshake_rejects_generic_initializing_messages(self):
+        clock = [0.0]
+        connection = mock.Mock()
+        def read(**_kwargs):
+            clock[0] += 0.2
+            return b"Initializing some other device\n"
+        connection.read_until.side_effect = read
+        with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
+            with self.assertRaisesRegex(TimeoutError, "no Ignitron PING reply"):
+                IPT.verify_ignitron_connection(connection, timeout=1)
+
+    def test_serial_handshake_cancellation_does_not_write(self):
+        event = mock.Mock()
+        event.wait.return_value = True
+        connection = mock.Mock()
+        with self.assertRaises(InterruptedError):
+            IPT.verify_ignitron_connection(connection, stop_event=event)
+        connection.write.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix" and __import__("sys").platform.startswith("linux"), "Linux ioctl test")
+    def test_linux_serial_deasserts_both_control_lines_together(self):
+        import fcntl
+        import struct
+        import termios
+        class Serial:
+            @property
+            def dtr(self): return self._dtr_state
+            @dtr.setter
+            def dtr(self, value): self._dtr_state = value
+            @property
+            def rts(self): return self._rts_state
+            @rts.setter
+            def rts(self, value): self._rts_state = value
+            def open(self):
+                self.fd = 77
+                self._update_dtr_state()
+                self._update_rts_state()
+        with mock.patch.dict("sys.modules", {"serial": SimpleNamespace(Serial=Serial)}), mock.patch.object(fcntl, "ioctl") as ioctl:
+            IPT.open_serial_no_reset("/dev/test")
+        self.assertTrue(ioctl.call_count)
+        for call in ioctl.call_args_list:
+            self.assertEqual((77, termios.TIOCMBIC, struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS)), call.args)
+
+    def test_remote_verifies_and_uses_one_connection(self):
+        import threading
+        page = object.__new__(IPT.PedalRemotePage)
+        page.append_log = mock.Mock()
+        page.stop_event = threading.Event()
+        page.winfo_exists = lambda: False
+        page.after = lambda _delay, callback, *args: callback(*args)
+        page.app = SimpleNamespace(set_status=mock.Mock())
+        for name in ("update_remote_terminal_status", "update_hw_bank_visibility", "update_hardware_indicator", "remote_connected", "send_remote_serial_line", "finish", "handle_detected_serial_end"):
+            setattr(page, name, mock.Mock())
+        connection = mock.Mock()
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection) as opener, mock.patch.object(IPT, "verify_ignitron_connection") as verify:
+            IPT.PedalRemotePage.run_tool(page, "/dev/test")
+        opener.assert_called_once()
+        self.assertIs(connection, verify.call_args.args[0])
+        page.remote_connected.assert_called_once_with("/dev/test")
+        page.send_remote_serial_line.assert_called_once_with("HWINFO")
+        connection.close.assert_called_once()
+        page.handle_detected_serial_end.assert_not_called()
+
+    def test_capture_connect_and_backup_do_not_probe_on_the_gui_thread(self):
+        import threading
+        for active_only in (None, True, False):
+            with self.subTest(active_only=active_only):
+                page = object.__new__(IPT.CapturePage)
+                page.running = False
+                page.stop_event = threading.Event()
+                page.port_var = SimpleNamespace(get=lambda: "/dev/test")
+                page.selected_port = lambda: "/dev/test"
+                for name in ("refresh_ports", "update_connection_indicator", "set_action_state",
+                             "run_tool", "run_backup", "auto_select_port"):
+                    setattr(page, name, mock.Mock())
+                page.start_button = mock.Mock()
+                page.stop_button = mock.Mock()
+                page.connection_state_var = mock.Mock()
+                page.app = SimpleNamespace(request_serial_start=mock.Mock(), set_status=mock.Mock())
+                with mock.patch.object(IPT, "probe_ignitron_port") as probe, \
+                        mock.patch.object(IPT.threading, "Thread") as worker:
+                    if active_only is None:
+                        page.start()
+                    else:
+                        page.start_backup(active_only)
+                    probe.assert_not_called()
+                    page.auto_select_port.assert_not_called()
+                    worker.assert_not_called()
+                    page.app.request_serial_start.call_args.kwargs["on_ready"]()
+                    worker.return_value.start.assert_called_once()
+                page.update_connection_indicator.assert_called_once_with(False)
+                page.connection_state_var.set.assert_called_with("Connecting...")
+
+    def test_capture_handoff_waits_for_previous_connection_to_finish(self):
+        import threading
+        app = object.__new__(IPT.IgnitronApp)
+        app.pages = {}
+        previous = SimpleNamespace(running=True, tool_title="Remote", stop_serial=mock.Mock())
+        page = SimpleNamespace(stop_event=threading.Event(), tool_title="Capture", finish=mock.Mock())
+        app.active_serial_page = previous
+        app.set_status = mock.Mock()
+        app.update_global_usb_status = mock.Mock()
+        pending = []
+        app.after = lambda _delay, callback: pending.append(callback)
+        ready = mock.Mock()
+        with mock.patch.object(IPT.time, "sleep") as sleep:
+            app.request_serial_start(page, on_ready=ready)
+            sleep.assert_not_called()
+        previous.stop_serial.assert_called_once()
+        pending.pop(0)()
+        ready.assert_not_called()
+        previous.running = False
+        pending.pop(0)()
+        ready.assert_called_once()
+        page.finish.assert_not_called()
+
+    def test_capture_handoff_can_be_cancelled_before_opening_usb(self):
+        import threading
+        app = object.__new__(IPT.IgnitronApp)
+        app.pages = {}
+        app.active_serial_page = None
+        app.update_global_usb_status = mock.Mock()
+        pending = []
+        app.after = lambda _delay, callback: pending.append(callback)
+        page = SimpleNamespace(stop_event=threading.Event(), finish=mock.Mock())
+        ready = mock.Mock()
+        app.request_serial_start(page, on_ready=ready)
+        page.stop_event.set()
+        pending.pop(0)()
+        ready.assert_not_called()
+        page.finish.assert_called_once()
+
+    def test_capture_verifies_before_requesting_amp_mode_and_reuses_port(self):
+        import threading
+        page = object.__new__(IPT.CapturePage)
+        page.stop_event = threading.Event()
+        page.append_log = mock.Mock()
+        page.after = mock.Mock()
+        page.connection_state_var = mock.Mock()
+        connection = mock.Mock()
+        connection.read_until.return_value = b"OK CAPTUREMODE READY\n"
+        def verify(conn, **kwargs):
+            self.assertIs(connection, conn)
+            connection.write.assert_not_called()
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection) as opener, \
+                mock.patch.object(IPT, "verify_ignitron_connection", side_effect=verify):
+            result = page._enter_capture_amp_mode("/dev/test")
+        self.assertIs(result, connection)
+        opener.assert_called_once()
+        connection.write.assert_has_calls([mock.call(b"CAPTUREMODE\n"), mock.call(b"CAPTUREKEEPALIVE\n")])
+        connection.close.assert_not_called()
+
+    def test_capture_cancel_during_reboot_closes_usb_before_restoring_app_mode(self):
+        import threading
+        page = object.__new__(IPT.CapturePage)
+        page.stop_event = threading.Event()
+        page.append_log = mock.Mock()
+        page.after = mock.Mock()
+        page.connection_state_var = mock.Mock()
+        connection = mock.Mock()
+        def restarting(**kwargs):
+            page.stop_event.set()
+            return b"OK CAPTUREMODE RESTARTING\n"
+        connection.read_until.side_effect = restarting
+        def restore(**kwargs):
+            connection.close.assert_called()
+            self.assertEqual({"port": "/dev/test"}, kwargs)
+        page._return_to_app_mode = mock.Mock(side_effect=restore)
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection), \
+                mock.patch.object(IPT, "verify_ignitron_connection"):
+            with self.assertRaises(InterruptedError):
+                page._enter_capture_amp_mode("/dev/test")
+        page._return_to_app_mode.assert_called_once()
+
+    @unittest.skipUnless(os.name == "posix", "PTY serial fault test")
+    def test_usb_probe_times_out_even_when_input_never_ends_a_line(self):
+        import serial
+        import threading
+        import time
+        master, slave = os.openpty()
+        # A blocking writer can fill Darwin's PTY buffer after the probe
+        # closes its reader, then deadlock os.close(master) during cleanup.
+        os.set_blocking(master, False)
+        stop = threading.Event()
+        def noise():
+            while not stop.wait(0.002):
+                try:
+                    os.write(master, b"x" * 256)
+                except BlockingIOError:
+                    pass
+        writer = threading.Thread(target=noise, daemon=True)
+        try:
+            connection = serial.Serial(os.ttyname(slave), timeout=0.08)
+            writer.start()
+            before = time.monotonic()
+            with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection):
+                self.assertFalse(IPT.probe_ignitron_port(SimpleNamespace(device="test"), timeout=0.2))
+            self.assertLess(time.monotonic() - before, 1.0)
+            self.assertFalse(connection.is_open)
+        finally:
+            stop.set()
+            if writer.ident is not None:
+                writer.join(timeout=1)
+                self.assertFalse(writer.is_alive())
+            os.close(master)
+            os.close(slave)
 
     def test_auto_detect_does_not_fallback_to_an_unverified_com_port(self):
         stale = SimpleNamespace(
@@ -1031,8 +1372,16 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 IPT.save_settings({"serial_port": "COM7"})
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
-    def test_public_release_version_is_2_1_00(self):
-        self.assertEqual("2.1.00", IPT.APP_VERSION)
+    def test_public_release_versions_agree(self):
+        self.assertEqual("2.1.01", IPT.APP_VERSION)
+        root = Path(IPT.__file__).parent
+        for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.01"')
+        self.assertIn('VERSION = "2.1.01"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.01', (root / "install_linux.sh").read_text())
+        workflow = (root / ".github/workflows/build-release.yml").read_text()
+        for platform in ("Windows", "Linux", "macOS"):
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.01-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")

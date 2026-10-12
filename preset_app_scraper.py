@@ -4,6 +4,7 @@ import re
 import json
 import os
 import time
+from preset_capture import PresetCaptureDecoder, save_captured_preset
 
 BAUD = 115200
 
@@ -39,9 +40,7 @@ def main():
     os.makedirs(session_folder, exist_ok=True)
     print(f"📂 Saving captured presets into: {session_folder}")
 
-    last_uuid = None
-    buffer = ""
-    capturing = False
+    decoder = PresetCaptureDecoder()
 
     while True:
         try:
@@ -51,41 +50,14 @@ def main():
 
             print(line)
 
-            # start capture when JSON begins
-            if line.startswith("received from app:") or line.startswith("JSON STRING:"):
-                buffer = ""
-                capturing = True
-                continue
-
-            if capturing:
-                buffer += line + "\n"
-                if line.strip().endswith("}"):
-                    capturing = False
-                    try:
-                        raw_preset = json.loads(buffer)
-
-                        uuid = raw_preset.get("UUID")
-                        if uuid == last_uuid:
-                            continue
-                        last_uuid = uuid
-
-                        preset = normalize_json(raw_preset)
-
-                        safe_name = re.sub(r'\W+', '', preset.get("Name", "preset"))
-                        if not safe_name:
-                            safe_name = "preset"
-                        fname = os.path.join(session_folder, f"{safe_name}.json")
-
-                        with open(fname, "w", encoding="utf-8") as f:
-                            json.dump(preset, f, indent=4)
-
-                        print(f"✅ Saved preset: {fname}")
-
-                    except Exception as e:
-                        print(f"⚠️ Failed to parse buffered JSON: {e}")
-                        print("--- RAW BUFFER START ---")
-                        print(buffer)
-                        print("--- RAW BUFFER END ---")
+            try:
+                preset = decoder.feed(line)
+                if preset is not None:
+                    output, created = save_captured_preset(session_folder, normalize_json(preset))
+                    if created:
+                        print(f"Saved preset: {output}")
+            except (ValueError, OSError) as exc:
+                print(f"Could not save preset: {exc}")
 
         except KeyboardInterrupt:
             print("Exiting...")

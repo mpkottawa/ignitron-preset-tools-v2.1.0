@@ -1,6 +1,24 @@
-# Ignitron Preset Tools v2.1.00
+# Ignitron Preset Tools v2.1.01
 
-This is the first public IPT 2.1 release. The app window, packaged application, archives, documentation, and bundled current firmware use the v2.1.00 version. Future maintenance releases can continue as v2.1.1, v2.1.2, and so on.
+## Fixes in v2.1.01 - 2026-10-12
+
+This maintenance release follows v2.1.00 with the Linux testing fixes. The application, native archives and bundled current firmware are labelled **2.1.01**. The original v2.1.00 release remains available. Download the archive for your platform and its matching SHA256SUMS.txt.
+
+- Fixed Linux VLC discovery and a PipeWire crash when changing volume before playback. Added a real-audio-backend self-test.
+- Added KDE Places folder selection, remembered music locations, and SMB access through the desktop credential/mount services.
+- Fixed CP2102 serial control-line resets and kept a verified connection open for Pedal Remote. Orange preset highlighting now means selected only.
+- Moved Capture connection work off the GUI thread and wait for the previous USB task to finish. Firmware tasks and app serial tools cannot share the port concurrently.
+- Capture now decodes nested and inline preset JSON and preserves different presets with the same name. Routine keepalive messages no longer flood the log.
+- Backups reuse the verified port, report interrupted or incomplete transfers, and use unique folders. **Pull listed presets** describes all filenames in PresetList.txt, rather than implying just the active bank.
+- Linux upgrades and normal uninstalls preserve working projects, presets, captures and backups. Bundled firmware templates update separately. Settings writes are atomic.
+- Both firmware and filesystem must build before an optional erase. Builder exports back up replaced preset JSON and reject ambiguous selected filenames.
+- Added the revised **Linux-Install-Guide.pdf**, also available as a separate release download. Published filenames and checksum entries now match.
+
+Close IPT before installing. Use the v2.1.01 installer. The guide's clean-install checklist remains a separate end-to-end test; native CI packaging does not replace testing each amp or Linux distribution.
+
+## v2.1.00 - initial release
+
+This is the first public IPT 2.1 release. The app window, packaged application, archives, documentation, and bundled current firmware use the v2.1.00 version. The first maintenance update is v2.1.01.
 
 - Added the ready-to-build IPT v2.1.00 firmware project to every native package and the GitHub source release.
 - Added a separate sanitized Ignitron 1.9.0 firmware project as a fallback and recovery point.
@@ -120,7 +138,7 @@ This is the first public IPT 2.1 release. The app window, packaged application, 
 - The persistent top-right USB panel now shows **Remote active** or **Capture active**, then returns to **USB ready** or **Disconnected** as soon as a session ends.
 - Holding Bank Up to switch AMP-mode Bluetooth between BLE and Serial now carries the active Spark Capture session across that intentional reboot; unplugging, power-cycling, resetting, ending capture, or losing USB still returns to normal APP mode.
 - Merged the separate Pedal Puller into the Spark Capture workspace.
-- Added **Pull active bank** and **Pull full library** buttons for saving connected-pedal presets to timestamped backup folders.
+- Added **Pull listed presets** and **Pull full library** buttons for saving connected-pedal presets to timestamped backup folders.
 - Kept live Spark app capture in the same page, with one shared USB-port selector and safe single-task serial handling.
 
 Release date: 2026-10-12

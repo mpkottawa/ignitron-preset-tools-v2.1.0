@@ -23,6 +23,7 @@ import queue
 import serial
 import subprocess
 import threading
+import tempfile
 import serial.tools.list_ports
 from pathlib import Path
 from datetime import datetime
@@ -43,27 +44,34 @@ LISTPRESETS_DONE_RE  = re.compile(r"^LISTPRESETS_DONE", re.I)
 class SerialReader(threading.Thread):
     """Line-buffered serial reader on a background thread."""
     def __init__(self, port: str, baud: int = 115200, timeout: float = 0.1,
-                 capture_keepalive: bool = False):
+                 capture_keepalive: bool = False, connection=None):
         super().__init__(daemon=True)
         self.port_name = port
         self.baud = baud
         self.timeout = timeout
         self.capture_keepalive = capture_keepalive
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
+        self.ready = threading.Event()
         self.q = queue.Queue()
-        self.ser = None
+        self.ser = connection
+        self.owns_connection = connection is None
 
     def run(self):
         try:
-            self.ser = serial.Serial(self.port_name, self.baud, timeout=self.timeout)
+            if self.ser is None:
+                self.ser = serial.Serial(self.port_name, self.baud, timeout=self.timeout, write_timeout=1)
+            self.ser.timeout = self.timeout
         except Exception as e:
             self.q.put(("__ERROR__", f"Serial open failed: {e}"))
+            self.ready.set()
             return
+
+        self.ready.set()
 
         buf = bytearray()
         next_keepalive = 0.0
         try:
-            while not self._stop.is_set():
+            while not self._stop_event.is_set():
                 if self.capture_keepalive and time.monotonic() >= next_keepalive:
                     self.ser.write(b"CAPTUREKEEPALIVE\n")
                     next_keepalive = time.monotonic() + 2.0
@@ -82,25 +90,18 @@ class SerialReader(threading.Thread):
             self.q.put(("__ERROR__", f"Serial read error: {e}"))
         finally:
             try:
-                if self.ser and self.ser.is_open:
+                if self.owns_connection and self.ser and self.ser.is_open:
                     self.ser.close()
             except Exception:
                 pass
 
     def stop(self):
-        self._stop.set()
-        try:
-            if self.ser and self.ser.is_open:
-                self.ser.close()
-        except Exception:
-            pass
+        self._stop_event.set()
 
     def write_line(self, s: str):
-        try:
-            if self.ser and self.ser.is_open:
-                self.ser.write((s + "\n").encode())
-        except Exception:
-            pass
+        if not self.ser or not self.ser.is_open:
+            raise RuntimeError("The pedal USB connection is not open")
+        self.ser.write((s + "\n").encode())
 
 # ==========================================================
 # ------------------ Utilities -----------------------------
@@ -114,7 +115,8 @@ def timestamp_now():
 def resolve_out_paths(base_dir=None):
     ts = timestamp_now()
     root = Path(base_dir).expanduser().resolve() if base_dir else Path.cwd()
-    out_dir = root / f"presets_{ts}"
+    root.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(tempfile.mkdtemp(prefix=f"presets_{ts}_", dir=root))
     return out_dir, ts
 
 def print_divider(title=""):
@@ -190,22 +192,31 @@ def _normalize_for_ignitron(preset: dict) -> dict:
 def _write_preset_file(filename, buffer, out_dir, include_only):
     json_text = "\n".join(buffer)
     json_text = _clean_json_text(json_text)
+    temporary = None
 
     try:
         preset = json.loads(json_text)
+        if not isinstance(preset, dict) or not isinstance(preset.get("Pedals"), list):
+            raise ValueError("Not a Spark preset object")
         preset = _normalize_for_ignitron(preset)
         uuid_up = preset.get("UUID", "")
 
         base = _basename(filename)
         if (include_only is None) or (base in include_only):
-            with open(out_dir / base, "w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=out_dir,
+                                             prefix=".preset-", suffix=".tmp", delete=False) as f:
+                temporary = Path(f.name)
                 json.dump(preset, f, indent=2)
+            os.replace(temporary, out_dir / base)
             return True, uuid_up
         return False, uuid_up
 
     except Exception as e:
         print(f"⚠️ Failed to process preset {filename}: {e}")
         return False, ""
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
     safe_mkdir(out_dir)
@@ -219,7 +230,7 @@ def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
         low = ln.lower()
 
         if low.startswith("reading preset filename:"):
-            if filename and buffer:
+            if filename:
                 scanned += 1
                 base = _basename(filename)
                 if base in seen_files:
@@ -250,7 +261,7 @@ def _extract_lines_to_files(lines, out_dir: Path, include_only=None):
         if collecting:
             buffer.append(ln)
 
-    if filename and buffer:
+    if filename:
         scanned += 1
         base = _basename(filename)
         if base in seen_files:
@@ -274,80 +285,82 @@ def pull_presets(port: str,
                  open_folder_after: bool = True,
                  output_root=None,
                  stop_event=None,
-                 capture_keepalive: bool = False):
+                 capture_keepalive: bool = False,
+                 connection=None):
     out_dir, ts = resolve_out_paths(output_root)
     safe_mkdir(out_dir)
-
     print_divider("Serial Preset Pull")
     print(f"Opening {port} @ {baud} ...")
-
-    reader = SerialReader(port, baud, capture_keepalive=capture_keepalive)
+    reader = SerialReader(port, baud, capture_keepalive=capture_keepalive, connection=connection)
     reader.start()
-    time.sleep(0.2)
 
-    # Step 1: LISTBANKS
-    print("→ Requesting LISTBANKS ...")
-    reader.write_line("LISTBANKS")
-    banks_lines = []
-    got_banks = False
-    start_ts = time.time()
-    while time.time() - start_ts < 5.0 and not (stop_event and stop_event.is_set()):
-        try:
-            typ, payload = reader.q.get(timeout=0.25)
-        except queue.Empty:
-            continue
-        if typ == "line":
-            line = payload
-            if LISTBANKS_START_RE.match(line):
-                got_banks = True
-            if got_banks:
-                banks_lines.append(line)
-            if LISTBANKS_DONE_RE.match(line):
-                break
+    def cancelled():
+        return stop_event is not None and stop_event.is_set()
 
-    include_only = None
-    if include_only_active and banks_lines:
-        ordered_list = parse_presetlist_from_lines(banks_lines)
-        include_only = set(ordered_list)
+    def request_lines(command, start_pattern, done_pattern, timeout):
+        if cancelled():
+            raise InterruptedError("Preset backup cancelled")
+        print(f"→ Requesting {command} ...")
+        reader.write_line(command)
+        lines = []
+        started = False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if cancelled():
+                raise InterruptedError("Preset backup cancelled")
+            try:
+                kind, payload = reader.q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if kind == "__ERROR__":
+                raise RuntimeError(payload)
+            if kind != "line":
+                continue
+            if start_pattern.match(payload):
+                started = True
+            if started:
+                lines.append(payload)
+                if done_pattern.match(payload):
+                    return lines
+        raise TimeoutError(f"{command} did not finish; the backup is incomplete")
+
+    try:
+        if not reader.ready.wait(5):
+            raise TimeoutError("Timed out opening the pedal USB connection")
+        # Surface an open failure immediately, rather than reporting an empty
+        # backup as successful after waiting for commands that were never sent.
+        if not reader.ser or not reader.ser.is_open:
+            try:
+                _kind, error = reader.q.get_nowait()
+            except queue.Empty:
+                error = "The pedal USB connection is not open"
+            raise RuntimeError(error)
+        include_only = None
+        if include_only_active:
+            banks_lines = request_lines("LISTBANKS", LISTBANKS_START_RE, LISTBANKS_DONE_RE, 5)
+            include_only = set(parse_presetlist_from_lines(banks_lines))
+            if not include_only:
+                raise RuntimeError("The pedal PresetList contains no preset filenames; no backup was saved")
+            print(f"Pedal PresetList detected: {len(include_only)} filenames to keep.")
+        presets_lines = request_lines("LISTPRESETS", LISTPRESETS_START_RE, LISTPRESETS_DONE_RE, 120)
+        stats = _extract_lines_to_files(presets_lines, out_dir, include_only)
+        if not stats["saved"]:
+            raise RuntimeError("No valid presets were received; no backup was saved")
+        if include_only is None and stats["skipped"]:
+            raise RuntimeError(f"Incomplete backup: {stats['skipped']} preset(s) could not be saved")
         if include_only:
-            print(f"✅ Pedal PresetList detected: {len(include_only)} filenames to keep.")
-        else:
-            print("ℹ️ LISTBANKS returned, but no filenames found. Will save all.")
-
-    # Step 2: LISTPRESETS
-    print("→ Requesting LISTPRESETS ...")
-    reader.write_line("LISTPRESETS")
-    presets_lines = []
-    got_lp = False
-    start_ts = time.time()
-    while time.time() - start_ts < 120.0 and not (stop_event and stop_event.is_set()):
-        try:
-            typ, payload = reader.q.get(timeout=0.5)
-        except queue.Empty:
-            if got_lp:
-                break
-            continue
-        if typ == "line":
-            line = payload
-            if LISTPRESETS_START_RE.match(line):
-                got_lp = True
-            if got_lp:
-                presets_lines.append(line)
-            if LISTPRESETS_DONE_RE.match(line):
-                break
-
-    stats = _extract_lines_to_files(presets_lines, out_dir, include_only)
-
-    reader.stop()
-    reader.join(timeout=1.0)
-
-    if stop_event and stop_event.is_set():
-        print("\nPreset pull stopped before completion.")
-    else:
+            missing = sorted(name for name in include_only if not (out_dir / name).is_file())
+            if missing:
+                raise RuntimeError(f"Incomplete backup: {len(missing)} listed preset(s) missing: " + ", ".join(missing[:8]))
         print_summary(stats, out_dir, ts)
-
-    if stats["saved"] > 0 and open_folder_after and not (stop_event and stop_event.is_set()):
-        open_folder(out_dir)
+        if open_folder_after:
+            open_folder(out_dir)
+        return stats
+    finally:
+        reader.stop()
+        reader.join(timeout=2.0)
+        if reader.is_alive():
+            raise RuntimeError("The preset backup reader did not stop")
 
 # ==========================================================
 # ------------------ Splash Screen -------------------------
