@@ -7947,8 +7947,8 @@ class PedalRemotePage(SerialPage):
                     text=button_text,
                     bg=CARD_ALT,
                     fg=TEXT,
-                    activebackground=ORANGE,
-                    activeforeground="white",
+                    activebackground=BORDER,
+                    activeforeground=TEXT,
                     relief="flat",
                     bd=0,
                     width=8 if bank == 1 else 5,
@@ -8333,8 +8333,8 @@ class PedalRemotePage(SerialPage):
                     text=label,
                     bg=CARD_ALT if filename else "#161922",
                     fg=TEXT if filename else MUTED,
-                    activebackground=ORANGE,
-                    activeforeground="white",
+                    activebackground=BORDER,
+                    activeforeground=TEXT,
                     relief="flat",
                     bd=0,
                     height=1,
@@ -8508,19 +8508,25 @@ class PedalRemotePage(SerialPage):
         self.stop_pending_bank_flash()
         if self.active_hw_cell:
             try:
-                self.active_hw_cell.configure(bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_hw_cell.configure(
+                    bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
             self.active_hw_cell = None
         if self.active_cell:
             try:
-                self.active_cell.configure(bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_cell.configure(
+                    bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
         cell = self.preset_cells.get((bank, preset))
         self.active_cell = cell
         if cell:
-            cell.configure(bg=ORANGE, fg="white")
+            cell.configure(bg=ORANGE, fg="white", activebackground=ORANGE, activeforeground="white")
         self.current_slot_var.set(f"{bank:02d}-{preset}")
         self.current_preset_var.set(label)
         self.draw_current_preset_display()
@@ -8529,19 +8535,25 @@ class PedalRemotePage(SerialPage):
         self.stop_pending_bank_flash()
         if self.active_cell:
             try:
-                self.active_cell.configure(bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_cell.configure(
+                    bg=getattr(self.active_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
             self.active_cell = None
         if self.active_hw_cell:
             try:
-                self.active_hw_cell.configure(bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT)
+                self.active_hw_cell.configure(
+                    bg=getattr(self.active_hw_cell, "default_bg", CARD_ALT), fg=TEXT,
+                    activebackground=BORDER, activeforeground=TEXT,
+                )
             except Exception:
                 pass
         cell = self.hw_preset_cells.get((bank, preset))
         self.active_hw_cell = cell
         if cell:
-            cell.configure(bg=ORANGE, fg="white")
+            cell.configure(bg=ORANGE, fg="white", activebackground=ORANGE, activeforeground="white")
         self.current_slot_var.set(f"HW{bank}-{preset}")
         self.current_preset_var.set(label)
         self.draw_current_preset_display()
