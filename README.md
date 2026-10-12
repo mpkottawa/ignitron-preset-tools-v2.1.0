@@ -45,9 +45,25 @@ Extract it and move `Ignitron Preset Tools v2.1.01.app` to Applications. Unsigne
 
 ### Linux
 
-Follow [the step-by-step Linux installation PDF](Linux-Install-Guide.pdf) for v2.1.01. The guide includes exact download/checksum commands, first-run prerequisites, local music and optional NAS setup, and a recoverable clean-retest procedure.
+#### Recommended: all-in-one setup
 
-The IPT installer installs the desktop application and the two firmware projects for the current user. It **does not install PlatformIO Core or VLC**. Install those system prerequisites first.
+Download **[Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh)** from the v2.1.01 release into Downloads. Keep the pedal unplugged, close IPT if it is open, and run this as your normal user:
+
+```bash
+bash "$HOME/Downloads/Install-IPT-Linux.sh"
+```
+
+Enter your Linux password when sudo asks. The installer detects Fedora or Ubuntu/Debian and x64 or ARM64, installs missing native VLC/Python/curl prerequisites, verifies and installs IPT, installs PlatformIO in its normal user environment, installs the official USB rules, and checks VLC plus firmware and filesystem builds. KDE users also get the Places/NAS helpers `kdialog` and `kio-fuse`. VS Code and Arduino IDE are not needed. Internet is required; first-time ESP32 downloads and compilation can take several minutes.
+
+Continue only when it says **SETUP COMPLETE**. Open IPT from the application menu and review the pedal's hardware settings before flashing. Setup never uploads to or erases the pedal, and preserves existing projects, presets and settings. Its build checks use the clean downloaded firmware; your first build of a working project may still unpack cached libraries and compile it.
+
+`bash Install-IPT-Linux.sh --check` shows the plan without making changes. If a stage fails, setup stops with a log under `~/.local/state/ignitron-preset-tools/setup`; fix the reported problem and rerun the same installer. Atomic/immutable Fedora editions and other distributions need their own setup method. The source for the release installer is [setup_linux.sh](setup_linux.sh).
+
+Follow [the updated Linux installation PDF](Linux-Install-Guide.pdf) for setup and feature checks. The original v2.1.01 native archives remain unchanged; the new online installer and revised PDF are additional release downloads.
+
+#### Manual installation alternative
+
+The archive's `install_linux.sh` installs just the desktop application and the two firmware projects for the current user. For this manual route, install PlatformIO Core and VLC separately:
 
 Fedora:
 

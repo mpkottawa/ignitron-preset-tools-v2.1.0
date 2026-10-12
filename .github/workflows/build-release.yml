@@ -160,6 +160,7 @@ jobs:
             if [[ "$package" != "$canonical" ]]; then mv "$package" "$canonical"; fi
           done
           cp Linux-Install-Guide.pdf artifacts/
+          cp setup_linux.sh artifacts/Install-IPT-Linux.sh
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "Ignitron Preset Tools $RELEASE_TAG" --notes-file GITHUB_RELEASE.md
           (cd artifacts && sha256sum * > SHA256SUMS.txt)
           gh release upload "$RELEASE_TAG" artifacts/* --clobber

@@ -77,8 +77,10 @@ SOURCE_FILES = (
     "requirements-build.txt",
     "requirements.txt",
     "run_ipt_2.1.sh",
+    "setup_linux.sh",
     "test_firmware_injector.py",
     "test_linux_workflows.py",
+    "test_linux_setup.py",
     "uninstall_linux.sh",
 )
 SOURCE_DIRECTORIES = (".github", "reference", "docs")

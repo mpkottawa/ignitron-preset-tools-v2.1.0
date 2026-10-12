@@ -20,6 +20,20 @@ IPT v2.1.01 is the desktop control center for building Ignitron preset banks, in
 
 ## Native downloads
 
+### Linux: one-file setup
+
+Download **[Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.01/Install-IPT-Linux.sh)** into Downloads, keep the pedal unplugged, then run:
+
+```bash
+bash "$HOME/Downloads/Install-IPT-Linux.sh"
+```
+
+It installs missing VLC/Python prerequisites, PlatformIO Core, USB rules and the matching x64/ARM64 IPT package. KDE Places/NAS helpers are included on KDE. It verifies the download and checks both VLC playback and firmware/filesystem builds. Enter your Linux password when asked, and wait for **SETUP COMPLETE**. Fedora with dnf and Ubuntu/Debian with apt are supported. Review the pedal hardware settings in IPT before flashing; setup does not upload to a pedal. Existing projects and presets are preserved.
+
+This installer and the revised PDF were added after the original v2.1.01 packages. The native application archives and release tag remain unchanged. The archive's `install_linux.sh` remains the app-only/manual alternative.
+
+### Individual platform packages
+
 Choose the archive matching the operating system and CPU:
 
 - `Ignitron.Preset.Tools.v2.1.01.Windows-x64.zip`
@@ -28,7 +42,7 @@ Choose the archive matching the operating system and CPU:
 - `Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz`
 - `Ignitron.Preset.Tools.v2.1.01.Linux-arm64.tar.gz`
 
-Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users should follow the Fedora or Ubuntu/Debian prerequisites in `README.md`, extract the archive from `~/Downloads`, and run `./install_linux.sh` to install for the current user. The IPT installer does not install PlatformIO Core or VLC.
+Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users can use the one-file setup above, or follow the manual prerequisites in `README.md` and run the archive's `./install_linux.sh` for an app-only installation.
 
 The release workflow builds each application natively. It does not relabel a Windows executable for another operating system.
 
