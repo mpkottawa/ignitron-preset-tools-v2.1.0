@@ -136,7 +136,7 @@ STOCK_HARDWARE_SETTINGS = {
         "dedicated_leds_var": False,
     },
 }
-APP_RELEASE_DATE = "2026-07-06"
+APP_RELEASE_DATE = "2026-10-12"
 APP_DESCRIPTION = "Preset building, pedal control, firmware setup, filesystem upload, and serial capture tools."
 IPT_REQUIRED_FILES = (
     "Ignitron.ino",
