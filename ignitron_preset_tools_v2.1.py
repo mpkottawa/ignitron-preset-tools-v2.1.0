@@ -739,16 +739,23 @@ def vlc_install_message(detail=None):
     return f"{install}{source_note}{detail_note}\n\nRestart IPT after installation."
 
 
-def run_vlc_self_test(output=print):
+def apply_vlc_volume(player, volume):
+    """Defer volume until the native audio output is running (PipeWire safety)."""
+    if player is None or not player.is_playing():
+        return False
+    return player.audio_set_volume(volume) == 0
+
+
+def run_vlc_self_test(output=print, real_audio=False):
     """Exercise packaged libVLC discovery and basic transport without a GUI."""
     instance = None
     player = None
     media = None
     try:
-        instance = create_vlc_instance(
-            "--no-video", "--intf=dummy", "--aout=dummy",
-            "--no-video-title-show", "--quiet",
-        )
+        arguments = ["--no-video", "--intf=dummy", "--no-video-title-show", "--quiet"]
+        if not real_audio:
+            arguments.append("--aout=dummy")
+        instance = create_vlc_instance(*arguments)
         player = instance.media_player_new()
         if player is None:
             raise RuntimeError("libVLC could not create a media player")
@@ -780,11 +787,16 @@ def run_vlc_self_test(output=print):
                 raise RuntimeError(
                     "libVLC did not start WAV playback; its access/demux plugins may be unavailable"
                 )
+            if real_audio:
+                if not apply_vlc_volume(player, 40):
+                    raise RuntimeError("Real audio output did not accept the volume update")
+                time.sleep(0.3)
             player.set_pause(1)
             player.set_time(250)
             player.set_pause(0)
             player.stop()
         output("VLC self-test passed: instance, WAV playback, pause, seek, and stop are available.")
+        output("Audio output: " + ("system backend; volume update passed" if real_audio else "dummy (real audio not tested)"))
         return 0
     except Exception as exc:
         output("VLC self-test failed.")
@@ -3635,7 +3647,7 @@ class BackingTracksPage(Page):
             self.player = self.vlc_instance.media_player_new()
             if self.player is None:
                 raise RuntimeError("libVLC could not create a media player")
-            self.player.audio_set_volume(self.volume_var.get())
+            self.applied_volume = None
             self.vlc_error_detail = None
             return True
         except Exception as exc:
@@ -3918,8 +3930,8 @@ class BackingTracksPage(Page):
         self.current_index = self.play_order.index(item_id)
         media = self.vlc_instance.media_new(str(path))
         self.player.set_media(media)
+        self.applied_volume = None
         self.player.play()
-        self.player.audio_set_volume(self.volume_var.get())
         self.tree.selection_set(item_id)
         self.tree.see(item_id)
         artist, album, _duration = self.tree.item(item_id, "values")
@@ -3969,9 +3981,14 @@ class BackingTracksPage(Page):
     def set_volume(self, value):
         volume = max(0, min(100, int(float(value))))
         self.volume_text_var.set(f"{volume}%")
-        if self.player:
-            self.player.audio_set_volume(volume)
+        self.apply_pending_volume()
         update_settings(backing_tracks_volume=volume)
+
+    def apply_pending_volume(self):
+        volume = self.volume_var.get()
+        if getattr(self, "applied_volume", None) != volume:
+            if apply_vlc_volume(self.player, volume):
+                self.applied_volume = volume
 
     def adjust_volume(self, change):
         volume = max(0, min(100, self.volume_var.get() + change))
@@ -4030,6 +4047,7 @@ class BackingTracksPage(Page):
     def update_playback(self):
         try:
             if self.player:
+                self.apply_pending_volume()
                 length = max(0, self.player.get_length())
                 current = max(0, self.player.get_time())
                 if not self.user_seeking and length:
@@ -8907,6 +8925,6 @@ class CapturePage(SerialPage):
 
 
 if __name__ == "__main__":
-    if "--vlc-self-test" in sys.argv:
-        raise SystemExit(run_vlc_self_test())
+    if "--vlc-self-test" in sys.argv or "--vlc-audio-self-test" in sys.argv:
+        raise SystemExit(run_vlc_self_test(real_audio="--vlc-audio-self-test" in sys.argv))
     IgnitronApp().mainloop()

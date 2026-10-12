@@ -392,6 +392,22 @@ const int BATTERY_VOLTAGE_ADC_PIN = 36;
 
 
 class CrossPlatformReleaseTests(unittest.TestCase):
+    def test_volume_is_deferred_until_audio_output_is_playing(self):
+        player = mock.Mock()
+        player.is_playing.return_value = False
+        self.assertFalse(IPT.apply_vlc_volume(player, 80))
+        player.audio_set_volume.assert_not_called()
+        player.is_playing.return_value = True
+        player.audio_set_volume.return_value = 0
+        self.assertTrue(IPT.apply_vlc_volume(player, 80))
+        player.audio_set_volume.assert_called_once_with(80)
+
+    def test_volume_failure_remains_pending_for_retry(self):
+        player = mock.Mock()
+        player.is_playing.return_value = True
+        player.audio_set_volume.return_value = -1
+        self.assertFalse(IPT.apply_vlc_volume(player, 40))
+
     def test_vlc_none_instance_is_reported_as_runtime_mismatch(self):
         fake_vlc = SimpleNamespace(Instance=lambda *_arguments: None)
         with mock.patch.object(IPT, "load_vlc_module", return_value=fake_vlc):
