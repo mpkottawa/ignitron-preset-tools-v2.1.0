@@ -392,6 +392,20 @@ const int BATTERY_VOLTAGE_ADC_PIN = 36;
 
 
 class CrossPlatformReleaseTests(unittest.TestCase):
+    def test_music_location_accepts_local_folder_with_spaces(self):
+        with tempfile.TemporaryDirectory(prefix="music folder ") as folder:
+            self.assertEqual(Path(folder), IPT.resolve_music_folder(folder))
+
+    def test_music_location_rejects_password_in_smb_address(self):
+        with self.assertRaisesRegex(ValueError, "passwords"):
+            IPT.resolve_music_folder("smb://user:secret@nas/music")
+
+    def test_music_location_resolves_kde_mount(self):
+        with tempfile.TemporaryDirectory() as folder:
+            result = SimpleNamespace(returncode=0, stdout=repr((folder,)))
+            with mock.patch.object(IPT.sys, "platform", "linux"), mock.patch.object(IPT.shutil, "which", return_value="/usr/bin/gdbus"), mock.patch.object(IPT.subprocess, "run", return_value=result):
+                self.assertEqual(Path(folder), IPT.resolve_music_folder("smb://nas/music"))
+
     def test_volume_is_deferred_until_audio_output_is_playing(self):
         player = mock.Mock()
         player.is_playing.return_value = False

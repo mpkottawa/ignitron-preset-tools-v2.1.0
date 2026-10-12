@@ -2,6 +2,8 @@
 """Ignitron Preset Tools v2.1.00 - desktop control center."""
 
 import contextlib
+import ast
+from urllib.parse import urlsplit
 import base64
 import importlib.util
 import io
@@ -430,6 +432,54 @@ def external_process_env():
             else:
                 env[variable] = original
     return env
+
+
+def choose_music_folder(initial):
+    """Use KDE Places when available, with Tk as a portable fallback."""
+    if sys.platform.startswith("linux") and shutil.which("kdialog"):
+        try:
+            result = subprocess.run(
+                ["kdialog", "--getexistingdirectory", initial,
+                 "--title", "Choose backing-track library"],
+                env=external_process_env(), capture_output=True, text=True,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+            if result.returncode == 1:
+                return ""
+        except OSError:
+            pass
+    return filedialog.askdirectory(title="Choose backing-track library", initialdir=initial)
+
+
+def resolve_music_folder(location):
+    """Resolve a local folder or let KDE authenticate/mount an SMB location."""
+    location = location.strip()
+    if not location:
+        raise ValueError("Choose a music folder first.")
+    if location.lower().startswith("smb://"):
+        if urlsplit(location).password is not None:
+            raise ValueError("Do not put passwords in the address. Sign in through Dolphin instead.")
+        if not sys.platform.startswith("linux") or not shutil.which("gdbus"):
+            raise ValueError("Mount this network share in your file manager, then choose its local folder.")
+        try:
+            result = subprocess.run(
+                ["gdbus", "call", "--session", "--dest", "org.kde.KIOFuse",
+                 "--object-path", "/org/kde/KIOFuse", "--method",
+                 "org.kde.KIOFuse.VFS.mountUrl", location],
+                env=external_process_env(), capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode:
+                raise ValueError("Open this share in Dolphin and sign in, then retry. KDE KIOFuse is required for SMB addresses.")
+            location = ast.literal_eval(result.stdout.strip())[0]
+        except (OSError, subprocess.TimeoutExpired, SyntaxError, IndexError) as exc:
+            raise ValueError("Open the share in Dolphin and sign in, then retry or choose its mounted folder.") from exc
+    elif "://" in location:
+        raise ValueError("Choose a local/mounted folder, or an smb:// address on KDE.")
+    root = Path(location).expanduser()
+    if not root.is_dir():
+        raise ValueError("Folder is unavailable. Reconnect the drive or share and try again.")
+    return root
 
 
 def open_folder(path):
@@ -3431,7 +3481,7 @@ class BackingTracksPage(Page):
         self.favorite_paths = {
             str(Path(path)) for path in load_settings().get("backing_tracks_favorites", [])
         }
-        self.folder_var = tk.StringVar(value=load_saved_path("backing_tracks_folder"))
+        self.folder_var = tk.StringVar(value=load_settings().get("backing_tracks_folder", ""))
         self.now_playing_var = tk.StringVar(value="No track selected")
         self.time_var = tk.StringVar(value="0:00 / 0:00")
         self.library_status_var = tk.StringVar(value="Choose a backing-track folder")
@@ -3448,9 +3498,13 @@ class BackingTracksPage(Page):
         folder_bar.pack(fill="x", padx=34, pady=(0, 12), ipady=10)
         tk.Label(folder_bar, text="MUSIC FOLDER", bg=SURFACE, fg=GOLD,
                  font=("Segoe UI Semibold", 9)).pack(side="left", padx=(18, 10))
-        ttk.Entry(folder_bar, textvariable=self.folder_var).pack(
-            side="left", fill="x", expand=True, padx=(0, 10)
+        self.folder_combo = ttk.Combobox(
+            folder_bar, textvariable=self.folder_var,
+            values=load_settings().get("backing_tracks_locations", []),
         )
+        self.folder_combo.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.folder_combo.bind("<<ComboboxSelected>>", lambda _event: self.load_library())
+        self.folder_combo.bind("<Return>", lambda _event: self.load_library())
         ttk.Button(folder_bar, text="Reload", style="Dark.TButton",
                    command=self.load_library).pack(side="left", padx=(0, 8))
         ttk.Button(folder_bar, text="Choose folder", style="Gold.TButton",
@@ -3663,19 +3717,23 @@ class BackingTracksPage(Page):
 
     def choose_folder(self):
         initial = self.folder_var.get() or str(Path.home())
-        folder = filedialog.askdirectory(title="Choose backing-track library", initialdir=initial)
+        folder = choose_music_folder(initial)
         if not folder:
             return
         self.folder_var.set(folder)
-        update_settings(backing_tracks_folder=folder)
         self.load_library()
 
     def load_library(self):
-        root = Path(self.folder_var.get()).expanduser()
-        if not root.is_dir():
-            self.library_status_var.set("Choose a valid backing-track folder")
+        location = self.folder_var.get().strip()
+        try:
+            root = resolve_music_folder(location)
+        except (OSError, ValueError) as exc:
+            self.library_status_var.set(str(exc))
             return
-        update_settings(backing_tracks_folder=str(root.resolve()))
+        locations = [location] + [p for p in load_settings().get("backing_tracks_locations", []) if p != location]
+        locations = locations[:12]
+        update_settings(backing_tracks_folder=location, backing_tracks_locations=locations)
+        self.folder_combo.configure(values=locations)
         self.tree.delete(*self.tree.get_children())
         self.track_paths.clear()
         self.track_catalog.clear()
