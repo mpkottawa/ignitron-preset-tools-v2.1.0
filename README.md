@@ -1,10 +1,10 @@
-# Ignitron Preset Tools 2.1.00
+# Ignitron Preset Tools 2.1.01
 *Shoutout to stangreg for this great project `https://github.com/stangreg/Ignitron` *
 
 
 <img width="1024" height="1024" alt="IPT" src="https://github.com/mpkottawa/ignitron-preset-tools/blob/main/Ignitron%20preset%20tools%20logo.png" />
 
-Ignitron Preset Tools (IPT) is a desktop control center for building Ignitron preset banks, flashing firmware and filesystem data, remotely selecting Spark presets, backing up pedal presets, capturing presets from the Spark app, and playing backing tracks. This repository and its native packages are the first public **v2.1.00** release.
+Ignitron Preset Tools (IPT) is a desktop control center for building Ignitron preset banks, flashing firmware and filesystem data, remotely selecting Spark presets, backing up pedal presets, capturing presets from the Spark app, and playing backing tracks. This repository and its native packages provide **v2.1.01**, a maintenance release for Linux playback, USB connections, capture, backups and installation.
 
 ## Supported platforms
 
@@ -22,7 +22,7 @@ Other Unix-like systems may work from source when Python, Tk, pyserial, VLC, and
 
 Each native download contains the IPT application, documentation, reference material, and two firmware projects:
 
-- **`ignitron firmware`** is the ready-to-build IPT v2.1.00 firmware with the current serial features and prepared preset library. In the GitHub source tree the same project is named **`Ignitron`**.
+- **`ignitron firmware`** is the ready-to-build IPT v2.1.01 firmware with the current serial features and prepared preset library. In the GitHub source tree the same project is named **`Ignitron`**.
 - **`Ignitron 1.9.0`** is the earlier firmware kept as a clean fallback. It does not have IPT v2.1 support unless you deliberately inject that support into this copy.
 
 Both projects are sanitized for release: saved host serial ports, build caches, backups, logs, captures, and local paths are excluded. See [FIRMWARE.md](FIRMWARE.md) before flashing, especially if the pedal does not use the default SH1106 display.
@@ -31,7 +31,7 @@ Both projects are sanitized for release: saved host serial ports, build caches, 
 
 ### Windows
 
-Download `Ignitron Preset Tools v2.1.00 Windows-x64.zip`, extract it, and run `Ignitron Preset Tools v2.1.00.exe`. If Windows SmartScreen appears on the unsigned build, choose **More info > Run anyway**.
+Download `Ignitron.Preset.Tools.v2.1.01.Windows-x64.zip`, extract it, and run `Ignitron Preset Tools v2.1.01.exe`. If Windows SmartScreen appears on the unsigned build, choose **More info > Run anyway**.
 
 ### macOS
 
@@ -40,11 +40,11 @@ Download the package matching the Mac:
 - `macOS-arm64.zip` for Apple Silicon (M1 and newer).
 - `macOS-x64.zip` for Intel Macs.
 
-Extract it and move `Ignitron Preset Tools v2.1.00.app` to Applications. Unsigned builds may require Control-clicking the app and choosing **Open** once. Signing and notarization with an Apple Developer ID removes that warning for a public Mac distribution.
+Extract it and move `Ignitron Preset Tools v2.1.01.app` to Applications. Unsigned builds may require Control-clicking the app and choosing **Open** once. Signing and notarization with an Apple Developer ID removes that warning for a public Mac distribution.
 
 ### Linux
 
-Follow [the step-by-step Linux installation PDF](Linux-Install-Guide.pdf) for the 2026-10-12 Linux fixes rebuild. The guide includes exact download/checksum commands, first-run prerequisites, local music and optional NAS setup, and a recoverable clean-retest procedure.
+Follow [the step-by-step Linux installation PDF](Linux-Install-Guide.pdf) for v2.1.01. The guide includes exact download/checksum commands, first-run prerequisites, local music and optional NAS setup, and a recoverable clean-retest procedure.
 
 The IPT installer installs the desktop application and the two firmware projects for the current user. It **does not install PlatformIO Core or VLC**. Install those system prerequisites first.
 
@@ -67,8 +67,8 @@ Download the archive matching the computer. For an x64 download in the normal Do
 
 ```bash
 cd "$HOME/Downloads"
-tar -xzf "Ignitron.Preset.Tools.v2.1.00.Linux-x64.tar.gz"
-cd "Ignitron Preset Tools v2.1.00 Linux-x64"
+tar -xzf "Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz"
+cd "Ignitron Preset Tools v2.1.01 Linux-x64"
 chmod +x install_linux.sh
 ./install_linux.sh
 ```
@@ -134,7 +134,7 @@ Open IPT and select the installed current project:
 ~/.local/share/ignitron-preset-tools/ignitron firmware
 ```
 
-This is the IPT v2.1.00 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
+This is the IPT v2.1.01 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
 
 For optional troubleshooting, build firmware and filesystem without uploading to the pedal:
 
@@ -190,7 +190,7 @@ Or run `python3 ignitron_preset_tools_v2.1.py` directly. On Windows, `py -3 igni
 3. Open **Firmware**, choose the PlatformIO environment and detected serial port.
 4. Click **Build + Flash FW + FS**.
 
-For the normal v2.1.00 setup, select the bundled `ignitron firmware` folder (`Ignitron` when running from source). Select `Ignitron 1.9.0` only when you intentionally want the fallback release.
+For the normal v2.1.01 setup, select the bundled `ignitron firmware` folder (`Ignitron` when running from source). Select `Ignitron 1.9.0` only when you intentionally want the fallback release.
 
 The persistent **Pedal USB** control in the very top-right of the page header is the single serial-port selector for the whole app. IPT watches for newly connected USB serial devices and asks whether the detected device is the Ignitron pedal. Confirming a port applies it immediately to Firmware, Pedal Remote, Spark Capture, and every other serial tool, then writes `upload_port` to the selected/default PlatformIO environment. The status indicator shows **Disconnected**, **USB ready**, or **Connected**. Use **Scan USB** or choose a different port manually at any time.
 
@@ -268,13 +268,13 @@ Linux:    ./build_release_linux.sh
 The builders:
 
 - create a native PyInstaller application;
-- stage both the sanitized IPT v2.1.00 firmware project and the Ignitron 1.9.0 fallback, with preset data but no saved host serial port;
+- stage both the sanitized IPT v2.1.01 firmware project and the Ignitron 1.9.0 fallback, with preset data but no saved host serial port;
 - run a privacy check against the finished package;
 - name the archive with its operating system and CPU architecture.
 
 `build_release_mac.sh` creates an `.icns` icon from `IPT.ico`. Set `MACOS_CODESIGN_IDENTITY` to a Developer ID Application identity when building a signed Mac app. Notarization still requires the normal Apple credential submission after signing.
 
-The GitHub Actions workflow builds and tests Windows x64, macOS ARM64, macOS Intel, Linux x64, and Linux ARM64. Tag `v2.1.00` publishes the first release; later fixes can use `v2.1.1`, `v2.1.2`, and so on. Manual workflow runs can build artifacts without publishing.
+The GitHub Actions workflow builds and tests Windows x64, macOS ARM64, macOS Intel, Linux x64, and Linux ARM64. Tag `v2.1.01` publishes this maintenance release. Keep previous release tags available when publishing later versions. Manual workflow runs can build artifacts without publishing.
 
 ## Release privacy
 

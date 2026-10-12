@@ -1,8 +1,8 @@
-# Ignitron Preset Tools v2.1.00
+# Ignitron Preset Tools v2.1.01
 
-## Linux fixes rebuild - 2026-10-12
+## Fixes in v2.1.01 - 2026-10-12
 
-This maintenance rebuild replaces the original downloads under the existing **v2.1.00** tag. Application version remains **2.1.00**. Download the new archive and SHA256SUMS.txt together; discard earlier cached archives when retesting.
+This maintenance release follows v2.1.00 with the Linux testing fixes. The application, native archives and bundled current firmware are labelled **2.1.01**. The original v2.1.00 release remains available. Download the archive for your platform and its matching SHA256SUMS.txt.
 
 - Fixed Linux VLC discovery and a PipeWire crash when changing volume before playback. Added a real-audio-backend self-test.
 - Added KDE Places folder selection, remembered music locations, and SMB access through the desktop credential/mount services.
@@ -14,9 +14,11 @@ This maintenance rebuild replaces the original downloads under the existing **v2
 - Both firmware and filesystem must build before an optional erase. Builder exports back up replaced preset JSON and reject ambiguous selected filenames.
 - Added the revised **Linux-Install-Guide.pdf**, also available as a separate release download. Published filenames and checksum entries now match.
 
-Close IPT before installing. Use this rebuilt installer, not an older extracted copy. The guide's clean-install checklist remains a separate end-to-end test; native CI packaging does not replace testing each amp or Linux distribution.
+Close IPT before installing. Use the v2.1.01 installer. The guide's clean-install checklist remains a separate end-to-end test; native CI packaging does not replace testing each amp or Linux distribution.
 
-This is the first public IPT 2.1 release. The app window, packaged application, archives, documentation, and bundled current firmware use the v2.1.00 version. Future maintenance releases can continue as v2.1.1, v2.1.2, and so on.
+## v2.1.00 - initial release
+
+This is the first public IPT 2.1 release. The app window, packaged application, archives, documentation, and bundled current firmware use the v2.1.00 version. The first maintenance update is v2.1.01.
 
 - Added the ready-to-build IPT v2.1.00 firmware project to every native package and the GitHub source release.
 - Added a separate sanitized Ignitron 1.9.0 firmware project as a fallback and recovery point.

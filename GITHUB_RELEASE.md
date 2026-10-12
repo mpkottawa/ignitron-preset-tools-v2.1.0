@@ -1,8 +1,8 @@
-# Ignitron Preset Tools v2.1.00
+# Ignitron Preset Tools v2.1.01
 
-## Linux fixes rebuild - 2026-10-12
+## Fixes in v2.1.01 - 2026-10-12
 
-This maintenance rebuild replaces the original downloads under the existing **v2.1.00** tag. Application version remains **2.1.00**. Download the new archive and SHA256SUMS.txt together; discard earlier cached archives when retesting.
+This maintenance release follows v2.1.00 with the Linux testing fixes. The application, native archives and bundled current firmware are labelled **2.1.01**. The original v2.1.00 release remains available. Download the archive for your platform and its matching SHA256SUMS.txt.
 
 - Fixed Linux VLC discovery and a PipeWire crash when changing volume before playback. Added a real-audio-backend self-test.
 - Added KDE Places folder selection, remembered music locations, and SMB access through the desktop credential/mount services.
@@ -14,19 +14,19 @@ This maintenance rebuild replaces the original downloads under the existing **v2
 - Both firmware and filesystem must build before an optional erase. Builder exports back up replaced preset JSON and reject ambiguous selected filenames.
 - Added the revised **Linux-Install-Guide.pdf**, also available as a separate release download. Published filenames and checksum entries now match.
 
-Close IPT before installing. Use this rebuilt installer, not an older extracted copy. The guide's clean-install checklist remains a separate end-to-end test; native CI packaging does not replace testing each amp or Linux distribution.
+Close IPT before installing. Use the v2.1.01 installer. The guide's clean-install checklist remains a separate end-to-end test; native CI packaging does not replace testing each amp or Linux distribution.
 
-IPT v2.1.00 is the desktop control center for building Ignitron preset banks, installing IPT firmware support, flashing firmware/filesystem data, controlling presets over USB, backing up a pedal, capturing presets from the Spark app, and playing backing tracks.
+IPT v2.1.01 is the desktop control center for building Ignitron preset banks, installing IPT firmware support, flashing firmware/filesystem data, controlling presets over USB, backing up a pedal, capturing presets from the Spark app, and playing backing tracks.
 
 ## Native downloads
 
 Choose the archive matching the operating system and CPU:
 
-- `Ignitron.Preset.Tools.v2.1.00.Windows-x64.zip`
-- `Ignitron.Preset.Tools.v2.1.00.macOS-arm64.zip` for Apple Silicon
-- `Ignitron.Preset.Tools.v2.1.00.macOS-x64.zip` for Intel Macs
-- `Ignitron.Preset.Tools.v2.1.00.Linux-x64.tar.gz`
-- `Ignitron.Preset.Tools.v2.1.00.Linux-arm64.tar.gz`
+- `Ignitron.Preset.Tools.v2.1.01.Windows-x64.zip`
+- `Ignitron.Preset.Tools.v2.1.01.macOS-arm64.zip` for Apple Silicon
+- `Ignitron.Preset.Tools.v2.1.01.macOS-x64.zip` for Intel Macs
+- `Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz`
+- `Ignitron.Preset.Tools.v2.1.01.Linux-arm64.tar.gz`
 
 Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users should follow the Fedora or Ubuntu/Debian prerequisites in `README.md`, extract the archive from `~/Downloads`, and run `./install_linux.sh` to install for the current user. The IPT installer does not install PlatformIO Core or VLC.
 
@@ -34,7 +34,7 @@ The release workflow builds each application natively. It does not relabel a Win
 
 ## Included firmware
 
-- `ignitron firmware` is the ready-to-build IPT v2.1.00 project with the current feature set and prepared preset library.
+- `ignitron firmware` is the ready-to-build IPT v2.1.01 project with the current feature set and prepared preset library.
 - `Ignitron 1.9.0` is included separately as the earlier fallback firmware.
 
 The current project defaults to the SH1106 1.3-inch OLED. Review OLED, battery, and GPIO settings before flashing hardware that differs from that profile. See `FIRMWARE.md` in the download for the short setup and recovery guide.

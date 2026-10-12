@@ -39,7 +39,7 @@ def link(text,url):return f'<a href="{url}" color="#176d92">{text}</a>'
 repo='https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0'
 
 title(1,'Start on a new Linux PC')
-p('<b>Guide revision 0.2 - 12 October 2026.</b> For the updated IPT <b>v2.1.00</b> release labelled <b>Linux fixes rebuild - 2026-10-12</b>. The version/tag stays the same; download the replacement archive and checksum list together. This guide is the checklist for the next clean installation, not a claim that the clean retest is already complete.')
+p('<b>Guide revision 0.3 - 12 October 2026.</b> For the IPT <b>v2.1.01</b> maintenance release. Download its archive and matching checksum list together. The original v2.1.00 remains available separately. This guide is the checklist for the next clean installation, not a claim that the clean retest is already complete.')
 note('A new PC starts here. To repeat the installation on a previously used PC, prepare a recoverable clean profile using page 7 first. Keep the pedal unplugged until step 10. Run one command block at a time and stop if its checkpoint fails.')
 h('1. Check the system')
 code('cat /etc/os-release\nuname -m\npython3 --version\ncommand -v curl\ncommand -v vlc')
@@ -67,12 +67,12 @@ p(link('PlatformIO Core installer','https://docs.platformio.org/en/latest/core/i
 
 title(3,'Download and install the release')
 h('5. Download the updated archive and checksums')
-p('Open '+link('the v2.1.00 release',repo+'/releases/tag/v2.1.00')+' and confirm its notes say <b>Linux fixes rebuild - 2026-10-12</b>. Avoid an earlier saved ZIP or GitHub Actions artifact. The commands below fetch the public release into a new folder.')
-code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\nipt_download=$(mktemp -d "$PWD/ipt-2.1.00-download.XXXXXX")\ncd "$ipt_download"\nrelease_url="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0"\nrelease_url="$release_url/releases/download/v2.1.00"\narchive="Ignitron.Preset.Tools.v2.1.00.Linux-x64.tar.gz"\ncurl -fL -o "$archive" "$release_url/$archive"\ncurl -fL -o SHA256SUMS.txt "$release_url/SHA256SUMS.txt"\nsha256sum --ignore-missing -c SHA256SUMS.txt')
+p('Open '+link('the v2.1.01 release',repo+'/releases/tag/v2.1.01')+' and confirm the version is <b>v2.1.01</b>. Avoid an earlier saved ZIP or GitHub Actions artifact. The commands below fetch the public release into a new folder.')
+code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\nipt_download=$(mktemp -d "$PWD/ipt-2.1.01-download.XXXXXX")\ncd "$ipt_download"\nrelease_url="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0"\nrelease_url="$release_url/releases/download/v2.1.01"\narchive="Ignitron.Preset.Tools.v2.1.01.Linux-x64.tar.gz"\ncurl -fL -o "$archive" "$release_url/$archive"\ncurl -fL -o SHA256SUMS.txt "$release_url/SHA256SUMS.txt"\nsha256sum --ignore-missing -c SHA256SUMS.txt')
 p('For ARM64, change <b>Linux-x64</b> to <b>Linux-arm64</b> in the archive assignment and extracted directory below. Keep using this same terminal so the variables remain set.')
 note('<b>Checkpoint:</b> the downloaded archive must report OK. If verification fails or checks no file, stop and download both files again. The release uses dots in download filenames; the extracted folder uses spaces.')
 h('6. Extract and install without sudo')
-code('tar -xzf "$archive"\ncd "Ignitron Preset Tools v2.1.00 Linux-x64"\nsh ./install_linux.sh')
+code('tar -xzf "$archive"\ncd "Ignitron Preset Tools v2.1.01 Linux-x64"\nsh ./install_linux.sh')
 p('Expected: <b>Installed Ignitron Preset Tools for this user.</b> The app appears in the menu, typically under Multimedia. Default location: ~/.local/share/ignitron-preset-tools. The launcher is ~/.local/bin/ignitron-preset-tools. A custom XDG_DATA_HOME changes the data location.')
 h('7. Check VLC, then launch IPT')
 code('"$HOME/.local/bin/ignitron-preset-tools" --vlc-self-test\n"$HOME/.local/bin/ignitron-preset-tools" --vlc-audio-self-test')
@@ -148,19 +148,19 @@ for text in [
 '10. Listed/full-library backups contain readable JSON and report completion.',
 '11. Builder export and optional NAS/favorites work; restart retains settings.'
 ]:p('[  ] '+text)
-h('Upgrade and uninstall behavior in the rebuilt package')
-p('Installing again updates the application and bundled templates while preserving working firmware projects, presets, captures and backups. The new uninstaller removes the app but retains working data and settings. Its <b>--purge</b> option deliberately deletes working data as well, so it is not the preferred clean-test procedure. Old extracted installers/uninstallers may still be destructive; use the rebuilt package.')
+h('Upgrade and uninstall behavior in v2.1.01')
+p('Installing again updates the application and bundled templates while preserving working firmware projects, presets, captures and backups. The new uninstaller removes the app but retains working data and settings. Its <b>--purge</b> option deliberately deletes working data as well, so it is not the preferred clean-test procedure. Old extracted installers/uninstallers may still be destructive; use the v2.1.01 package.')
 h('Recovery after the clean test')
 p('Close IPT. Keep the newly tested data/profile under a different backup name, then restore the original-app-data and original-settings folders from page 7 to their previous locations. Restore original-platformio only if you need the previous toolchain/cache. Never merge folders over one another without reviewing conflicts. This is not needed for a successful first installation.')
 h('Validation scope')
-p('Earlier Fedora 44 x64 testing confirmed flashing, real backing-track playback, NAS library access, Remote operations and phone preset capture. The rebuilt release also has automated regressions and native CI packaging. Hardware-specific features such as Spark 2 looper/battery telemetry require the corresponding amp. A passing software test cannot certify every Linux distribution, USB adapter or pedal.')
+p('Earlier Fedora 44 x64 testing confirmed flashing, real backing-track playback, NAS library access, Remote operations and phone preset capture. The v2.1.01 release also has automated regressions and native CI packaging. Hardware-specific features such as Spark 2 looper/battery telemetry require the corresponding amp. A passing software test cannot certify every Linux distribution, USB adapter or pedal.')
 p('Record pass/fail against this exact revised guide. Keep any failures open until the downloaded release passes the same action on this PC. Update the guide when the steps or behavior change.')
-p(link('Release and checksums',repo+'/releases/tag/v2.1.00')+' | '+link('Report or review issues',repo+'/issues'))
+p(link('Release and checksums',repo+'/releases/tag/v2.1.01')+' | '+link('Report or review issues',repo+'/issues'))
 
 def footer(c,doc):
     c.setStrokeColor(colors.HexColor('#e2e7ec'));c.line(42,40,570,40)
     c.setFont('Guide',8);c.setFillColor(colors.HexColor('#637083'))
-    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.2  |  12 Oct 2026')
+    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.3  |  12 Oct 2026')
     c.drawRightString(570,27,str(doc.page))
 doc=SimpleDocTemplate(str(OUT),pagesize=(612,792),rightMargin=42,leftMargin=42,topMargin=38,bottomMargin=54,title='Ignitron Preset Tools - Linux Installation Guide',author='Ignitron Preset Tools')
 doc.build(story,onFirstPage=footer,onLaterPages=footer)

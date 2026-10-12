@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-RELEASE_VERSION="2.1.00"
+RELEASE_VERSION="2.1.01"
 APP_NAME="Ignitron Preset Tools v$RELEASE_VERSION"
 ENTRY="$ROOT/ignitron_preset_tools_v2.1.py"
 BUILD_ROOT="$ROOT/build"

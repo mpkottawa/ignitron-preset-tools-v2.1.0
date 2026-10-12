@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ReleaseVersion = "2.1.00"
+$ReleaseVersion = "2.1.01"
 $AppName = "Ignitron Preset Tools v$ReleaseVersion"
 $Entry = Join-Path $Root "ignitron_preset_tools_v2.1.py"
 $Icon = Join-Path $Root "IPT.ico"

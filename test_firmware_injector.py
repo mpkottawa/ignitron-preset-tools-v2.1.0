@@ -1372,8 +1372,16 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 IPT.save_settings({"serial_port": "COM7"})
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
-    def test_public_release_version_is_2_1_00(self):
-        self.assertEqual("2.1.00", IPT.APP_VERSION)
+    def test_public_release_versions_agree(self):
+        self.assertEqual("2.1.01", IPT.APP_VERSION)
+        root = Path(IPT.__file__).parent
+        for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.01"')
+        self.assertIn('VERSION = "2.1.01"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.01', (root / "install_linux.sh").read_text())
+        workflow = (root / ".github/workflows/build-release.yml").read_text()
+        for platform in ("Windows", "Linux", "macOS"):
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.01-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")
