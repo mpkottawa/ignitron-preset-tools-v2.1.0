@@ -44,36 +44,123 @@ Extract it and move `Ignitron Preset Tools v2.1.00.app` to Applications. Unsigne
 
 ### Linux
 
-Download the archive matching the computer, extract it, then run:
+The IPT installer installs the desktop application and the two firmware projects for the current user. It **does not install PlatformIO Core or VLC**. Install those system prerequisites first.
+
+Fedora:
 
 ```bash
+sudo dnf install curl python3 vlc
+```
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install curl python3 python3-venv vlc
+```
+
+`python3-tkinter` (Fedora) or `python3-tk` (Ubuntu/Debian) is additionally required only when running IPT from source; the native package includes its Python/Tk runtime.
+
+Download the archive matching the computer. For an x64 download in the normal Downloads folder, extract and install it with:
+
+```bash
+cd "$HOME/Downloads"
+tar -xzf "Ignitron Preset Tools v2.1.00 Linux-x64.tar.gz"
+cd "Ignitron Preset Tools v2.1.00 Linux-x64"
 chmod +x install_linux.sh
 ./install_linux.sh
 ```
 
-This installs only for the current user, adds an application-menu entry, and adds `ignitron-preset-tools` to `~/.local/bin`. `uninstall_linux.sh` removes the application but deliberately keeps user settings.
+For ARM64, use `Linux-arm64` in the archive and directory names. The installer copies IPT to `~/.local/share/ignitron-preset-tools`, adds an application-menu entry, and creates `~/.local/bin/ignitron-preset-tools`. It deliberately keeps user settings when `uninstall_linux.sh` is later used. Do not run IPT or its installer as root.
 
-On Debian or Ubuntu, install the native runtime dependencies with:
+#### Install PlatformIO Core
 
-```bash
-sudo apt update
-sudo apt install python3-tk vlc
-```
-
-For access to CP210x/CH340 serial adapters, install PlatformIO's udev rules or add the current user to the serial-device group used by the distribution (commonly `dialout`), then sign out and back in:
+Use PlatformIO's official per-user installer; `sudo` is not needed:
 
 ```bash
-sudo usermod -a -G dialout "$USER"
+cd "$HOME/Downloads"
+curl -fsSL -o get-platformio.py \
+  https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py
+python3 get-platformio.py
+"$HOME/.platformio/penv/bin/platformio" --version
 ```
 
-Do not run IPT as root.
+The last command must print a PlatformIO Core version. Restart IPT after installation. A desktop app launched from the application menu may not inherit shell `PATH`, so in **Firmware > Show setup**, browse to this exact executable:
+
+```text
+/home/YOUR_USER/.platformio/penv/bin/platformio
+```
+
+No shell `PATH` change is required after this file is selected in IPT.
+
+#### Give the user USB serial permission
+
+Install PlatformIO's current udev rules on both Fedora and Ubuntu/Debian:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/system/99-platformio-udev.rules \
+  | sudo tee /etc/udev/rules.d/99-platformio-udev.rules >/dev/null
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Unplug and reconnect the pedal, then confirm that PlatformIO can see it:
+
+```bash
+"$HOME/.platformio/penv/bin/platformio" device list
+```
+
+If the port is present but permission is denied, inspect the real device and the user's current groups:
+
+```bash
+ls -l /dev/ttyUSB0       # use /dev/ttyACM0 instead when that is the reported port
+id -nG
+```
+
+Only if the device is owned by a normal serial-access group that is not already listed, add the user to that actual group (commonly `dialout`, `plugdev`, or `uucp`), then sign out and back in. Do not add the user to `root`.
+
+```bash
+sudo usermod -aG ACTUAL_DEVICE_GROUP "$USER"
+```
+
+#### Select and build the firmware before flashing
+
+Open IPT and select the installed current project:
+
+```text
+~/.local/share/ignitron-preset-tools/ignitron firmware
+```
+
+This is the IPT v2.1.00 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
+
+Before the first physical flash, prove that both firmware and filesystem compile without touching the pedal:
+
+```bash
+cd "$HOME/.local/share/ignitron-preset-tools/ignitron firmware"
+"$HOME/.platformio/penv/bin/platformio" run -e esp32dev
+"$HOME/.platformio/penv/bin/platformio" run -e esp32dev -t buildfs
+```
+
+Both commands must finish with `SUCCESS`. Then return to IPT, review the OLED/battery/hardware settings, confirm the USB port, and click **Build + Flash FW + FS**. The combined action saves the displayed settings before it builds and uploads.
+
+#### Linux troubleshooting
+
+| Symptom | Action |
+|---|---|
+| PlatformIO executable not found | Re-run the version command above, restart IPT, and browse to the full `~/.platformio/penv/bin/platformio` path. |
+| Permission denied opening the port | Reinstall/reload the udev rules, reconnect USB, inspect the device owner/group, and sign out/in after any group change. Never run IPT as root. |
+| No serial port appears | Reconnect the pedal, run `platformio device list`, try another data-capable USB cable/port, and check `dmesg --follow` while reconnecting. |
+| Port is busy | Close serial monitors and other IPT instances; use `fuser -v /dev/ttyUSB0` (or the actual port) to identify the process holding it. |
+| PlatformIO dependency download fails | Confirm internet/DNS access and retry the build. PlatformIO downloads the ESP32 platform and libraries on the first build. |
+| Backing Tracks says VLC could not start | Fedora: `sudo dnf install vlc`; Ubuntu/Debian: `sudo apt install vlc`; then restart IPT. The Linux package uses the distribution's matched libVLC core and plugins. |
 
 ## Hardware and optional software
 
 - Ignitron pedal connected by USB.
 - Spark amp connected to Ignitron for Pedal Remote, Spark Capture, hardware-preset control, or Spark 2 looper features.
 - [PlatformIO Core](https://platformio.org/install/cli) for firmware builds and uploads. IPT finds `platformio`/`pio` on `PATH` and also checks the normal per-user PlatformIO virtual environment.
-- [VLC](https://www.videolan.org/vlc/) for backing-track playback. Install the native VLC build matching the app architecture.
+- [VLC](https://www.videolan.org/vlc/) for backing-track playback. On Linux, install VLC from the same distribution as the operating system; the IPT package intentionally does not bundle another distribution's libVLC core/plugins.
 - A Silicon Labs CP210x driver if the operating system does not already expose the pedal as a serial device.
 
 ## Running from source

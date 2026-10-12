@@ -115,6 +115,12 @@ jobs:
         run: |
           chmod +x build_release_linux.sh
           ./build_release_linux.sh
+      - name: Verify packaged Linux VLC runtime
+        shell: bash
+        run: |
+          package_dir=$(find release -maxdepth 1 -type d -name '*Linux-${{ matrix.arch }}' -print -quit)
+          test -n "$package_dir"
+          "$package_dir/app/ignitron-preset-tools" --vlc-self-test
       - uses: actions/upload-artifact@v4
         with:
           name: Ignitron-Preset-Tools-v2.1.00-Linux-${{ matrix.arch }}

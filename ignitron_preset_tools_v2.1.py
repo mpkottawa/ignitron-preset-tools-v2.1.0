@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -26,10 +27,11 @@ except Exception:
     Image = None
     ImageTk = None
 
-try:
-    import vlc
-except Exception:
-    vlc = None
+# VLC is imported lazily after configure_vlc_runtime() has prepared the native
+# loader. This matters in frozen applications, where importing python-vlc at
+# module load time can bind to an incompatible library before runtime setup.
+vlc = None
+_VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
@@ -688,15 +690,111 @@ def configure_vlc_runtime():
                 pass
 
 
-def vlc_install_message():
+def load_vlc_module():
+    """Load python-vlc only after native library discovery is configured."""
+    global vlc, _VLC_IMPORT_ERROR
+    if vlc is not None:
+        return vlc
+    configure_vlc_runtime()
+    try:
+        import vlc as vlc_module
+    except Exception as exc:
+        _VLC_IMPORT_ERROR = exc
+        return None
+    vlc = vlc_module
+    _VLC_IMPORT_ERROR = None
+    return vlc
+
+
+def create_vlc_instance(*arguments):
+    """Create a usable VLC instance or raise a diagnostic error."""
+    module = load_vlc_module()
+    if module is None:
+        detail = str(_VLC_IMPORT_ERROR) if _VLC_IMPORT_ERROR else "python-vlc could not be imported"
+        raise RuntimeError(f"VLC Python binding could not be loaded: {detail}")
+    instance = module.Instance(*arguments)
+    if instance is None:
+        raise RuntimeError(
+            "libVLC loaded but returned no instance. The VLC core and plugin versions may not match."
+        )
+    return instance
+
+
+def vlc_install_message(detail=None):
     if sys.platform.startswith("win"):
         install = "Install the 64-bit VLC desktop application from videolan.org."
     elif sys.platform == "darwin":
         install = "Install the Universal VLC application from videolan.org and place VLC.app in Applications."
     else:
-        install = "Install VLC with your distribution's package manager (for example: sudo apt install vlc)."
-    source_note = "\nFor source runs, also install the Python binding: python3 -m pip install python-vlc"
-    return f"{install}{source_note}\n\nRestart IPT after installation."
+        install = (
+            "Install or repair the system VLC package that matches this Linux distribution:\n"
+            "Fedora: sudo dnf install vlc\n"
+            "Ubuntu/Debian: sudo apt update && sudo apt install vlc\n\n"
+            "The packaged IPT app uses the distribution's matching libVLC core and plugins."
+        )
+    source_note = ""
+    if not getattr(sys, "frozen", False):
+        source_note = "\nFor source runs, also install the Python binding: python3 -m pip install python-vlc"
+    detail_note = f"\n\nTechnical detail: {detail}" if detail else ""
+    return f"{install}{source_note}{detail_note}\n\nRestart IPT after installation."
+
+
+def run_vlc_self_test(output=print):
+    """Exercise packaged libVLC discovery and basic transport without a GUI."""
+    instance = None
+    player = None
+    media = None
+    try:
+        instance = create_vlc_instance(
+            "--no-video", "--intf=dummy", "--aout=dummy",
+            "--no-video-title-show", "--quiet",
+        )
+        player = instance.media_player_new()
+        if player is None:
+            raise RuntimeError("libVLC could not create a media player")
+        with tempfile.TemporaryDirectory(prefix="ipt-vlc-") as temp_dir:
+            audio_path = Path(temp_dir) / "vlc-self-test.wav"
+            with wave.open(str(audio_path), "wb") as audio:
+                audio.setnchannels(1)
+                audio.setsampwidth(2)
+                audio.setframerate(8000)
+                audio.writeframes(b"\x00\x00" * 16000)
+            media = instance.media_new(str(audio_path))
+            if media is None:
+                raise RuntimeError("libVLC could not create test media")
+            player.set_media(media)
+            if player.play() == -1:
+                raise RuntimeError("libVLC rejected the generated WAV test file")
+            deadline = time.monotonic() + 8.0
+            started = False
+            while time.monotonic() < deadline:
+                state = player.get_state()
+                if player.get_time() >= 0 and str(state).lower() in {
+                    "state.playing", "playing", "state.paused", "paused",
+                    "state.ended", "ended",
+                }:
+                    started = True
+                    break
+                time.sleep(0.05)
+            if not started:
+                raise RuntimeError(
+                    "libVLC did not start WAV playback; its access/demux plugins may be unavailable"
+                )
+            player.set_pause(1)
+            player.set_time(250)
+            player.set_pause(0)
+            player.stop()
+        output("VLC self-test passed: instance, WAV playback, pause, seek, and stop are available.")
+        return 0
+    except Exception as exc:
+        output("VLC self-test failed.")
+        output(vlc_install_message(exc))
+        return 1
+    finally:
+        for resource in (media, player, instance):
+            if resource is not None and hasattr(resource, "release"):
+                with contextlib.suppress(Exception):
+                    resource.release()
 
 
 def parse_platformio_envs(platformio_ini):
@@ -3532,20 +3630,23 @@ class BackingTracksPage(Page):
         self.search_job = None
 
     def initialize_player(self):
-        if vlc is None:
-            self.library_status_var.set(
-                "Playback engine unavailable - install VLC and the Python package 'python-vlc'."
-            )
-            return False
         try:
-            configure_vlc_runtime()
-            self.vlc_instance = vlc.Instance("--no-video-title-show", "--quiet")
+            self.vlc_instance = create_vlc_instance("--no-video-title-show", "--quiet")
             self.player = self.vlc_instance.media_player_new()
+            if self.player is None:
+                raise RuntimeError("libVLC could not create a media player")
             self.player.audio_set_volume(self.volume_var.get())
+            self.vlc_error_detail = None
             return True
         except Exception as exc:
             self.player = None
-            self.library_status_var.set(f"VLC could not start: {exc}")
+            self.vlc_instance = None
+            self.vlc_error_detail = str(exc)
+            if sys.platform.startswith("linux"):
+                action = "Install system VLC (Fedora: dnf install vlc; Ubuntu/Debian: apt install vlc)."
+            else:
+                action = "Install the native VLC desktop application, then restart IPT."
+            self.library_status_var.set(f"VLC could not start. {action}")
             return False
 
     def choose_folder(self):
@@ -3799,7 +3900,7 @@ class BackingTracksPage(Page):
             return True
         messagebox.showerror(
             "VLC playback unavailable",
-            vlc_install_message(),
+            vlc_install_message(getattr(self, "vlc_error_detail", None)),
         )
         return False
 
@@ -8806,4 +8907,6 @@ class CapturePage(SerialPage):
 
 
 if __name__ == "__main__":
+    if "--vlc-self-test" in sys.argv:
+        raise SystemExit(run_vlc_self_test())
     IgnitronApp().mainloop()

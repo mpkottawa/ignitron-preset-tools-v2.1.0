@@ -392,6 +392,97 @@ const int BATTERY_VOLTAGE_ADC_PIN = 36;
 
 
 class CrossPlatformReleaseTests(unittest.TestCase):
+    def test_vlc_none_instance_is_reported_as_runtime_mismatch(self):
+        fake_vlc = SimpleNamespace(Instance=lambda *_arguments: None)
+        with mock.patch.object(IPT, "load_vlc_module", return_value=fake_vlc):
+            with self.assertRaisesRegex(RuntimeError, "core and plugin versions may not match"):
+                IPT.create_vlc_instance("--quiet")
+
+    def test_linux_vlc_failure_message_is_actionable_for_both_distro_families(self):
+        with mock.patch.object(IPT.sys, "platform", "linux"):
+            message = IPT.vlc_install_message("libVLC returned no instance")
+        self.assertIn("sudo dnf install vlc", message)
+        self.assertIn("sudo apt update && sudo apt install vlc", message)
+        self.assertIn("libVLC returned no instance", message)
+        self.assertIn("core and plugins", message)
+
+    def test_vlc_self_test_exercises_play_pause_seek_and_stop(self):
+        calls = []
+
+        class Resource:
+            def release(self):
+                calls.append("release")
+
+        class Player(Resource):
+            def set_media(self, _media):
+                calls.append("set_media")
+
+            def play(self):
+                calls.append("play")
+                return 0
+
+            def get_state(self):
+                return "State.Playing"
+
+            def get_time(self):
+                return 0
+
+            def set_pause(self, value):
+                calls.append(("pause", value))
+
+            def set_time(self, value):
+                calls.append(("seek", value))
+
+            def stop(self):
+                calls.append("stop")
+
+        player = Player()
+
+        class Instance(Resource):
+            def media_player_new(self):
+                return player
+
+            def media_new(self, path):
+                self.path = Path(path)
+                self.size = self.path.stat().st_size
+                return Resource()
+
+        output = []
+        with mock.patch.object(IPT, "create_vlc_instance", return_value=Instance()):
+            self.assertEqual(0, IPT.run_vlc_self_test(output.append))
+
+        self.assertIn("play", calls)
+        self.assertIn(("pause", 1), calls)
+        self.assertIn(("seek", 250), calls)
+        self.assertIn(("pause", 0), calls)
+        self.assertIn("stop", calls)
+        self.assertIn("VLC self-test passed", output[0])
+
+    def test_linux_package_uses_system_vlc_and_ci_tests_the_frozen_app(self):
+        build_script = (ROOT / "build_release_linux.sh").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8")
+        self.assertIn("libvlc.so*", build_script)
+        self.assertIn("libvlccore.so*", build_script)
+        self.assertIn("Removing non-portable bundled VLC library", build_script)
+        self.assertIn("--vlc-self-test", workflow)
+        self.assertIn("Verify packaged Linux VLC runtime", workflow)
+
+    def test_linux_release_documentation_covers_first_build_requirements(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for required in (
+            "sudo dnf install curl python3 vlc",
+            "sudo apt install curl python3 python3-venv vlc",
+            "get-platformio.py",
+            '"$HOME/.platformio/penv/bin/platformio" --version',
+            "99-platformio-udev.rules",
+            '"$HOME/.platformio/penv/bin/platformio" device list',
+            "ignitron firmware",
+            "Ignitron 1.9.0",
+            "run -e esp32dev -t buildfs",
+            "Port is busy",
+        ):
+            self.assertIn(required, readme)
+
     def test_restore_stock_hardware_resets_every_registered_setting(self):
         def variable(value):
             state = SimpleNamespace(value=value)

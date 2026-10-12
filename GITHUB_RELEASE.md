@@ -12,7 +12,7 @@ Choose the archive matching the operating system and CPU:
 - `Ignitron Preset Tools v2.1.00 Linux-x64.tar.gz`
 - `Ignitron Preset Tools v2.1.00 Linux-arm64.tar.gz`
 
-Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users extract the archive and run `./install_linux.sh` to install for the current user.
+Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users should follow the Fedora or Ubuntu/Debian prerequisites in `README.md`, extract the archive from `~/Downloads`, and run `./install_linux.sh` to install for the current user. The IPT installer does not install PlatformIO Core or VLC.
 
 The release workflow builds each application natively. It does not relabel a Windows executable for another operating system.
 
@@ -57,3 +57,5 @@ The default upload speed is `460800`; app serial controls use `115200`.
 Every native builder uses the same release staging tool. Generated output, local settings, recent paths, window geometry, user home paths, network shares, backups, captures, logs, and other machine-specific data are excluded and the finished package is checked before archiving. The prepared release preset libraries are retained.
 
 See `README.md` for full Windows, macOS, and Linux setup instructions.
+
+Linux packages use the operating system's matched libVLC core and plugins rather than bundling Ubuntu VLC libraries into every distribution package. If VLC initialization fails, IPT reports the native Fedora and Ubuntu/Debian install commands plus the technical failure detail.

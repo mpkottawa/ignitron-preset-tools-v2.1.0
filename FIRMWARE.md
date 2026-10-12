@@ -28,6 +28,20 @@ Keep this folder unchanged if you want it available as a fallback. If you select
 
 PlatformIO Core is required for building and flashing. The default upload speed is `460800`; IPT serial-control features use `115200`.
 
+## Linux first build
+
+The IPT user installer does not install PlatformIO Core. Install it with PlatformIO's official per-user installer, restart IPT, and select `~/.platformio/penv/bin/platformio` in **Firmware > Show setup**. The normal installed firmware project is `~/.local/share/ignitron-preset-tools/ignitron firmware`; do not accidentally select the neighboring 1.9.0 fallback.
+
+Before a first physical flash, compile both images from a terminal:
+
+```bash
+cd "$HOME/.local/share/ignitron-preset-tools/ignitron firmware"
+"$HOME/.platformio/penv/bin/platformio" run -e esp32dev
+"$HOME/.platformio/penv/bin/platformio" run -e esp32dev -t buildfs
+```
+
+Both commands must report `SUCCESS`. Complete Fedora and Ubuntu/Debian package installation, udev rules, serial-group checks, and troubleshooting are in [README.md](README.md#linux).
+
 ## Important recovery notes
 
 - A firmware-only upload does not replace presets in the pedal filesystem.

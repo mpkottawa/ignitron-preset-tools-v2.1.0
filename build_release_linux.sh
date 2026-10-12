@@ -56,11 +56,31 @@ done
   "${DATA_ARGS[@]}" \
   "$ENTRY"
 
+# python-vlc's PyInstaller discovery can copy the build host's libvlc core into
+# the application. That core is not portable across Linux distributions and
+# must never be mixed with another distribution's VLC plugins. Linux packages
+# intentionally use the matching system libVLC and plugin set instead.
+while IFS= read -r -d '' bundled_library; do
+  echo "Removing non-portable bundled VLC library: $bundled_library"
+  rm -f -- "$bundled_library"
+done < <(find "$PYINSTALLER_APP" \( -type f -o -type l \) \
+  \( -name 'libvlc.so*' -o -name 'libvlccore.so*' \) -print0)
+while IFS= read -r -d '' bundled_plugins; do
+  echo "Removing non-portable bundled VLC plugins: $bundled_plugins"
+  rm -rf -- "$bundled_plugins"
+done < <(find "$PYINSTALLER_APP" -type d -path '*/vlc/plugins' -prune -print0)
+
 rm -rf "$DIST_PACKAGE"
 mkdir -p "$DIST_PACKAGE/app"
 cp -R "$PYINSTALLER_APP/." "$DIST_PACKAGE/app/"
 cp "$ROOT/install_linux.sh" "$ROOT/uninstall_linux.sh" "$DIST_PACKAGE/"
 chmod +x "$DIST_PACKAGE/install_linux.sh" "$DIST_PACKAGE/uninstall_linux.sh" "$DIST_PACKAGE/app/ignitron-preset-tools"
+
+if find "$DIST_PACKAGE/app" \( -type f -o -type l \) \
+    \( -name 'libvlc.so*' -o -name 'libvlccore.so*' \) -print -quit | grep -q .; then
+  echo "Linux package still contains a non-portable VLC core library." >&2
+  exit 1
+fi
 
 if [[ -f "$ROOT/IPT.ico" ]]; then
   ROOT="$ROOT" DIST_PACKAGE="$DIST_PACKAGE" "$PYTHON" - <<'PY'
