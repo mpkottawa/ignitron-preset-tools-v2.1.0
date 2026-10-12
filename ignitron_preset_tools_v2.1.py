@@ -495,7 +495,31 @@ def open_folder(path):
 def open_serial_no_reset(port, baud=115200, timeout=0.25):
     import serial
 
-    connection = serial.Serial()
+    serial_class = serial.Serial
+    if sys.platform.startswith("linux"):
+        import fcntl
+        import struct
+        import termios
+
+        class LinuxNoResetSerial(serial.Serial):
+            # ESP32 auto-reset circuits react to the intermediate DTR/RTS
+            # combination produced by two separate Linux modem-control writes.
+            # Clear both lines in one ioctl when opening a control session.
+            def _update_dtr_state(self):
+                if not self._dtr_state and not self._rts_state:
+                    fcntl.ioctl(self.fd, termios.TIOCMBIC,
+                                struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS))
+                else:
+                    super()._update_dtr_state()
+
+            def _update_rts_state(self):
+                if not self._dtr_state and not self._rts_state:
+                    self._update_dtr_state()
+                else:
+                    super()._update_rts_state()
+
+        serial_class = LinuxNoResetSerial
+    connection = serial_class()
     connection.port = port
     connection.baudrate = baud
     connection.timeout = timeout
@@ -505,14 +529,68 @@ def open_serial_no_reset(port, baud=115200, timeout=0.25):
     connection.dtr = False
     connection.rts = False
     connection.open()
-    try:
-        connection.setDTR(False)
-        connection.setRTS(False)
-        connection.reset_input_buffer()
-        connection.reset_output_buffer()
-    except Exception:
-        pass
     return connection
+
+
+def verify_ignitron_connection(connection, timeout=6.0, stop_event=None, log=None):
+    """Wait through an adapter-induced boot, keeping the verified port open."""
+    # Discard stale adapter output before issuing a fresh identity challenge.
+    if stop_event is not None:
+        if stop_event.wait(0.25):
+            raise InterruptedError("USB connection cancelled")
+    else:
+        time.sleep(0.25)
+    connection.reset_input_buffer()
+    deadline = time.monotonic() + timeout
+    next_ping = 0.0
+    last_boot_line = None
+    while time.monotonic() < deadline:
+        if stop_event is not None and stop_event.is_set():
+            raise InterruptedError("USB connection cancelled")
+        now = time.monotonic()
+        if now >= next_ping:
+            connection.write(b"\nPING\n")
+            next_ping = now + 0.5
+        line = connection.readline().decode(errors="replace").strip()
+        if re.match(r"^IGNITRON_FLASHER(?:\s|$)", line):
+            if log:
+                log(f"Verified pedal: {line}\n")
+            return
+        if log and line != last_boot_line and (is_pedal_reset_line(line) or line.startswith("BOOT ")):
+            log(f"Waiting for pedal startup: {line[:160]}\n")
+            last_boot_line = line
+    raise TimeoutError(
+        "USB port opened, but no Ignitron PING reply arrived within "
+        f"{timeout:g} seconds. Check pedal power and IPT firmware support."
+    )
+
+
+def run_serial_self_test(port, output=print):
+    """Check the packaged handshake and hardware query without changing presets."""
+    connection = None
+    try:
+        connection = open_serial_no_reset(port, timeout=0.1)
+        verify_ignitron_connection(connection, log=lambda line: output(line.strip()))
+        connection.write(b"HWINFO\n")
+        deadline = time.monotonic() + 3
+        hardware = None
+        while time.monotonic() < deadline:
+            line = connection.readline().decode(errors="replace").strip()
+            if is_pedal_reset_line(line):
+                raise RuntimeError("Pedal reset after verification: " + line)
+            if line.startswith("HWINFO "):
+                hardware = line
+        if not hardware:
+            raise TimeoutError("Pedal identity verified, but HWINFO did not reply")
+        output(hardware)
+        output("Serial self-test passed: handshake, hardware query, stable connection.")
+        return 0
+    except Exception as exc:
+        output(f"Serial self-test failed: {exc}")
+        return 1
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 def is_pedal_reset_line(line):
@@ -8149,9 +8227,28 @@ class PedalRemotePage(SerialPage):
         return "break"
 
     def start(self):
-        super().start()
         if self.running:
-            self.stop_button.configure(state="normal")
+            return
+        self.refresh_ports(select_best=False)
+        port = self.selected_port()
+        if not port or "Not connected" in self.port_var.get():
+            messagebox.showinfo("Select pedal USB", "Select the connected pedal's USB port, then try again.")
+            return
+        self.app.request_serial_start(self)
+        self.running = True
+        self.stop_event.clear()
+        self.start_button.configure(state="disabled")
+        self.stop_button.configure(state="normal")
+        self.update_connection_indicator(False)
+        self.connection_state_var.set("Connecting...")
+        threading.Thread(target=self.run_tool, args=(port,), daemon=True).start()
+
+    def remote_connected(self, port):
+        if self.stop_event.is_set():
+            return
+        self.app.remember_serial_port(port, verified=True)
+        self.update_connection_indicator(True)
+        self.app.set_status("Pedal Remote connected")
 
     def stop_serial(self, reason="user stopped remote"):
         super().stop_serial(reason)
@@ -8566,14 +8663,21 @@ class PedalRemotePage(SerialPage):
         connection = None
         detected_end_reason = ""
         try:
-            connection = open_serial_no_reset(port, 115200, timeout=0.25)
+            connection = open_serial_no_reset(port, 115200, timeout=0.1)
+            verify_ignitron_connection(connection, stop_event=self.stop_event, log=self.append_log)
+            if self.stop_event.is_set():
+                return
             self.connection = connection
             self.after(0, self.update_remote_terminal_status)
             self.update_hw_bank_visibility(1)
             self.update_hardware_indicator(1, "")
             self.send_remote_serial_line("HWINFO")
-            self.app.set_status("Pedal Remote connected")
+            self.after(0, self.remote_connected, port)
+            next_hwinfo = time.monotonic() + 3.0
             while self.winfo_exists() and not self.stop_event.is_set():
+                if time.monotonic() >= next_hwinfo:
+                    self.send_remote_serial_line("HWINFO")
+                    next_hwinfo = time.monotonic() + 3.0
                 line = connection.readline().decode(errors="ignore").strip()
                 if not line:
                     continue
@@ -8645,8 +8749,8 @@ class PedalRemotePage(SerialPage):
             if self.stop_event.is_set():
                 self.append_log("\nPedal Remote connection ended.\n")
             else:
-                detected_end_reason = "Pedal USB disconnected or reset — Pedal Remote ended"
-                self.append_log(f"\nSerial connection closed: {exc}\n")
+                detected_end_reason = f"Pedal Remote connection failed: {exc}"
+                self.append_log(f"\n{detected_end_reason}\n")
                 self.handle_detected_serial_end(detected_end_reason)
         finally:
             self.connection = None
@@ -8983,6 +9087,11 @@ class CapturePage(SerialPage):
 
 
 if __name__ == "__main__":
+    if "--serial-self-test" in sys.argv:
+        index = sys.argv.index("--serial-self-test")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit("Usage: --serial-self-test /dev/ttyUSB0")
+        raise SystemExit(run_serial_self_test(sys.argv[index + 1]))
     if "--vlc-self-test" in sys.argv or "--vlc-audio-self-test" in sys.argv:
         raise SystemExit(run_vlc_self_test(real_audio="--vlc-audio-self-test" in sys.argv))
     IgnitronApp().mainloop()

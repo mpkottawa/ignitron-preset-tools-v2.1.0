@@ -818,6 +818,82 @@ class CrossPlatformReleaseTests(unittest.TestCase):
 
         self.assertEqual([], opened_pages)
 
+    def test_serial_handshake_retries_through_boot_without_closing(self):
+        clock = [0.0]
+        connection = mock.Mock()
+        def read():
+            clock[0] += 0.2
+            return b"BOOT 90 WAITING_FOR_AMP\n" if clock[0] < 2 else b"IGNITRON_FLASHER 1\n"
+        connection.readline.side_effect = read
+        with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
+            IPT.verify_ignitron_connection(connection)
+        self.assertGreaterEqual(connection.write.call_count, 2)
+        connection.close.assert_not_called()
+        connection.reset_input_buffer.assert_called_once()
+
+    def test_serial_handshake_rejects_generic_initializing_messages(self):
+        clock = [0.0]
+        connection = mock.Mock()
+        def read():
+            clock[0] += 0.2
+            return b"Initializing some other device\n"
+        connection.readline.side_effect = read
+        with mock.patch.object(IPT.time, "monotonic", side_effect=lambda: clock[0]), mock.patch.object(IPT.time, "sleep"):
+            with self.assertRaisesRegex(TimeoutError, "no Ignitron PING reply"):
+                IPT.verify_ignitron_connection(connection, timeout=1)
+
+    def test_serial_handshake_cancellation_does_not_write(self):
+        event = mock.Mock()
+        event.wait.return_value = True
+        connection = mock.Mock()
+        with self.assertRaises(InterruptedError):
+            IPT.verify_ignitron_connection(connection, stop_event=event)
+        connection.write.assert_not_called()
+
+    @unittest.skipUnless(os.name == "posix" and __import__("sys").platform.startswith("linux"), "Linux ioctl test")
+    def test_linux_serial_deasserts_both_control_lines_together(self):
+        import fcntl
+        import struct
+        import termios
+        class Serial:
+            @property
+            def dtr(self): return self._dtr_state
+            @dtr.setter
+            def dtr(self, value): self._dtr_state = value
+            @property
+            def rts(self): return self._rts_state
+            @rts.setter
+            def rts(self, value): self._rts_state = value
+            def open(self):
+                self.fd = 77
+                self._update_dtr_state()
+                self._update_rts_state()
+        with mock.patch.dict("sys.modules", {"serial": SimpleNamespace(Serial=Serial)}), mock.patch.object(fcntl, "ioctl") as ioctl:
+            IPT.open_serial_no_reset("/dev/test")
+        self.assertTrue(ioctl.call_count)
+        for call in ioctl.call_args_list:
+            self.assertEqual((77, termios.TIOCMBIC, struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS)), call.args)
+
+    def test_remote_verifies_and_uses_one_connection(self):
+        import threading
+        page = object.__new__(IPT.PedalRemotePage)
+        page.append_log = mock.Mock()
+        page.stop_event = threading.Event()
+        page.winfo_exists = lambda: False
+        page.after = lambda _delay, callback, *args: callback(*args)
+        page.app = SimpleNamespace(set_status=mock.Mock())
+        for name in ("update_remote_terminal_status", "update_hw_bank_visibility", "update_hardware_indicator", "remote_connected", "send_remote_serial_line", "finish", "handle_detected_serial_end"):
+            setattr(page, name, mock.Mock())
+        connection = mock.Mock()
+        with mock.patch.object(IPT, "open_serial_no_reset", return_value=connection) as opener, mock.patch.object(IPT, "verify_ignitron_connection") as verify:
+            IPT.PedalRemotePage.run_tool(page, "/dev/test")
+        opener.assert_called_once()
+        self.assertIs(connection, verify.call_args.args[0])
+        page.remote_connected.assert_called_once_with("/dev/test")
+        page.send_remote_serial_line.assert_called_once_with("HWINFO")
+        connection.close.assert_called_once()
+        page.handle_detected_serial_end.assert_not_called()
+
     def test_auto_detect_does_not_fallback_to_an_unverified_com_port(self):
         stale = SimpleNamespace(
             device="COM6", description="Communications Port", manufacturer="",
