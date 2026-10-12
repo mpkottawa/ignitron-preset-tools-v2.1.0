@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import shutil
 import sys
@@ -68,6 +69,8 @@ SOURCE_FILES = (
     "build_release_mac.sh",
     "ignitron_preset_tools_v2.1.py",
     "install_linux.sh",
+    "launch_linux_setup.sh",
+    "START-HERE-Linux.txt",
     "preset_app_scraper.py",
     "preset_chart.py",
     "preset_converter.py",
@@ -222,6 +225,47 @@ def verify_release(root: Path) -> None:
     print(f"Release privacy check passed: {root}")
 
 
+def stage_linux_setup(source: Path, destination: Path, version: str, arch: str) -> None:
+    """Add the portable launcher, local installer and integrity manifest."""
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) or arch not in {"x64", "arm64"}:
+        raise ValueError("Invalid Linux package version or architecture")
+    if not (destination / "app/ignitron-preset-tools").is_file():
+        raise ValueError("Stage the native application before the Linux installer")
+    for name in ("setup_linux.sh", "launch_linux_setup.sh", "START-HERE-Linux.txt"):
+        shutil.copy2(source / name, destination / name)
+        if name.endswith(".sh"):
+            (destination / name).chmod(0o755)
+    # %k is a separate argument, never interpolated into shell source. Both
+    # filename and file: URI expansion are allowed by the desktop-entry spec.
+    command = (
+        'p=$1; case $p in file://*) '
+        'p=$(python3 -c \'import sys,urllib.parse; print(urllib.parse.unquote(urllib.parse.urlsplit(sys.argv[1]).path))\' "$p") || exit;; '
+        'esac; exec bash "$(dirname -- "$p")/launch_linux_setup.sh"'
+    )
+    # Escape Exec quoting, then the desktop file's string-value escaping.
+    quoted = ''.join('\\' + c if c in '\\"$`' else c for c in command)
+    quoted = quoted.replace('\\', '\\\\')
+    desktop = destination / "Install Ignitron.desktop"
+    desktop.write_text(
+        '[Desktop Entry]\nType=Application\nName=Install Ignitron\n'
+        'Comment=Set up IPT, VLC, PlatformIO and USB access\n'
+        f'Exec=sh -c "{quoted}" sh %k\n'
+        'Icon=system-software-install\nTerminal=true\nCategories=Utility;\n',
+        encoding="utf-8",
+    )
+    desktop.chmod(0o755)
+    (destination / "linux-package.txt").write_text(f"{version} {arch}\n", encoding="utf-8")
+    entries = []
+    for path in sorted(destination.rglob('*')):
+        if not path.is_file() or path.name == 'linux-bundle.sha256':
+            continue
+        name = path.relative_to(destination).as_posix()
+        if '\n' in name or '\\' in name:
+            raise ValueError(f"Unsupported release filename: {name!r}")
+        entries.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {name}\n")
+    (destination / "linux-bundle.sha256").write_text(''.join(entries), encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -237,11 +281,19 @@ def main() -> int:
     source.add_argument("source", type=Path)
     source.add_argument("destination", type=Path)
 
+    linux = subparsers.add_parser("stage-linux-setup", help="bundle the Linux all-in-one launcher")
+    linux.add_argument("source", type=Path)
+    linux.add_argument("destination", type=Path)
+    linux.add_argument("--version", required=True)
+    linux.add_argument("--arch", required=True, choices=("x64", "arm64"))
+
     args = parser.parse_args()
     if args.command == "stage-firmware":
         stage_firmware(args.source, args.destination)
     elif args.command == "stage-source":
         stage_source(args.source, args.destination)
+    elif args.command == "stage-linux-setup":
+        stage_linux_setup(args.source, args.destination, args.version, args.arch)
     else:
         verify_release(args.root)
     return 0

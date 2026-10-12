@@ -73,7 +73,7 @@ done < <(find "$PYINSTALLER_APP" -type d -path '*/vlc/plugins' -prune -print0)
 rm -rf "$DIST_PACKAGE"
 mkdir -p "$DIST_PACKAGE/app"
 cp -R "$PYINSTALLER_APP/." "$DIST_PACKAGE/app/"
-cp "$ROOT/install_linux.sh" "$ROOT/uninstall_linux.sh" "$ROOT/setup_linux.sh" "$DIST_PACKAGE/"
+cp "$ROOT/install_linux.sh" "$ROOT/uninstall_linux.sh" "$DIST_PACKAGE/"
 chmod +x "$DIST_PACKAGE/install_linux.sh" "$DIST_PACKAGE/uninstall_linux.sh" "$DIST_PACKAGE/app/ignitron-preset-tools"
 
 if find "$DIST_PACKAGE/app" \( -type f -o -type l \) \
@@ -101,6 +101,7 @@ fi
 if [[ -d "$LEGACY_FIRMWARE_SOURCE" ]]; then
   "$PYTHON" "$ROOT/release_tools.py" stage-firmware "$LEGACY_FIRMWARE_SOURCE" "$LEGACY_FIRMWARE_RELEASE"
 fi
+"$PYTHON" "$ROOT/release_tools.py" stage-linux-setup "$ROOT" "$DIST_PACKAGE" --version "$RELEASE_VERSION" --arch "$ARCH"
 "$PYTHON" "$ROOT/release_tools.py" verify "$DIST_PACKAGE"
 
 rm -f "$ARCHIVE_PATH"

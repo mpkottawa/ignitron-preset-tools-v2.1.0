@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-file online setup for the published IPT release. Run as your normal user.
+# Bundled or online setup for the published IPT release. Run as your normal user.
 set -euo pipefail
 
 RELEASE_VERSION="2.1.01"
@@ -26,6 +26,14 @@ case "$(uname -m)" in
   aarch64|arm64) ARCH=arm64 ;;
   *) fail 'This release supports Linux x64 and ARM64 only.' ;;
 esac
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+BUNDLED=false
+if [[ -e "$SCRIPT_DIR/linux-package.txt" || -d "$SCRIPT_DIR/app" ]]; then
+  [[ -f "$SCRIPT_DIR/linux-package.txt" ]] || fail 'This package is incomplete. Extract the entire updated Linux download, then run Install Ignitron again.'
+  [[ "$(cat "$SCRIPT_DIR/linux-package.txt")" == "$RELEASE_VERSION $ARCH" ]] || fail "This package does not match IPT $RELEASE_VERSION for Linux-$ARCH. Download the matching Linux package."
+  [[ -x "$SCRIPT_DIR/app/ignitron-preset-tools" && -f "$SCRIPT_DIR/install_linux.sh" && -f "$SCRIPT_DIR/ignitron firmware/platformio.ini" && -f "$SCRIPT_DIR/linux-bundle.sha256" ]] || fail 'This package is incomplete. Extract the entire Linux download before installing.'
+  BUNDLED=true
+fi
 [[ ! -e /run/ostree-booted ]] || fail 'Atomic/immutable Linux editions need a separate setup method. This installer supports Fedora with dnf and Ubuntu/Debian with apt.'
 [[ -r /etc/os-release ]] || fail 'Cannot identify this Linux distribution.'
 # This is the operating system-owned identification file, never a download.
@@ -51,6 +59,11 @@ done
 printf 'Ignitron Preset Tools %s - complete Linux setup\n' "$RELEASE_VERSION"
 printf 'System: %s / %s\n' "${PRETTY_NAME:-$ID}" "$ARCH"
 printf 'Missing system packages: %s\n' "${MISSING[*]:-none}"
+if "$BUNDLED"; then
+  printf '%s\n' 'Application source: this extracted Linux package (no app download needed).'
+else
+  printf '%s\n' 'Application source: verified download from the GitHub release.'
+fi
 printf '%s\n' 'Setup installs IPT, checks PlatformIO/VLC, installs USB rules, and builds firmware and filesystem.' \
   'Keep the pedal unplugged. Choose its hardware settings in IPT after setup.' \
   'Existing projects, presets and settings are preserved. Internet access is required.'
@@ -91,7 +104,14 @@ trap 'exit 143' TERM
 step() { PHASE=$1; printf '\n[%s] %s\n' "$2" "$1"; }
 download() { curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 --retry 3 --connect-timeout 20 --max-time 900 --output "$2" "$1"; }
 
-step 'installing system prerequisites' '1/7'
+step 'checking the IPT package' '1/7'
+if "$BUNDLED"; then
+  # Verify before asking for privilege or modifying installed files.
+  (cd "$SCRIPT_DIR" && sha256sum --check --strict --quiet linux-bundle.sha256)
+  PACKAGE="$SCRIPT_DIR"
+fi
+
+step 'installing system prerequisites' '2/7'
 sudo -v
 if [[ ${#MISSING[@]} -gt 0 ]]; then
   if [[ "$MANAGER" == dnf ]]; then
@@ -104,7 +124,9 @@ else
   printf '%s\n' 'Required system packages are already installed.'
 fi
 
-step 'downloading and verifying the IPT release' '2/7'
+if ! "$BUNDLED"; then
+PHASE='downloading and verifying the IPT release'
+printf '\n%s\n' 'Downloading and verifying the IPT application...'
 ARCHIVE="Ignitron.Preset.Tools.v$RELEASE_VERSION.Linux-$ARCH.tar.gz"
 download "$RELEASE_URL/$ARCHIVE" "$WORK/$ARCHIVE"
 download "$RELEASE_URL/SHA256SUMS.txt" "$WORK/SHA256SUMS.txt"
@@ -114,6 +136,7 @@ EXPECTED=$(awk -v name="$ARCHIVE" '$2 == name {print $1}' "$WORK/SHA256SUMS.txt"
 tar --no-same-owner -xzf "$WORK/$ARCHIVE" -C "$WORK"
 PACKAGE="$WORK/Ignitron Preset Tools v$RELEASE_VERSION Linux-$ARCH"
 [[ -f "$PACKAGE/install_linux.sh" && -x "$PACKAGE/app/ignitron-preset-tools" ]] || fail 'The verified archive does not contain the expected IPT application.'
+fi
 
 step 'installing USB permissions' '3/7'
 RULES="$WORK/99-platformio-udev.rules"
@@ -149,11 +172,12 @@ step 'checking VLC playback' '6/7'
 "$APP" --vlc-audio-self-test
 
 step 'downloading firmware tools and checking both builds' '7/7'
-# Build the pristine package copy, never a user's edited project or presets.
+# Build a temporary copy, never the extracted download or a user's project.
 # PlatformIO's shared downloads remain available for the subsequent IPT build.
 # Explicit run/buildfs targets never open, erase or upload to the pedal.
-"$PIO" run --project-dir "$PACKAGE/ignitron firmware" --environment esp32dev
-"$PIO" run --project-dir "$PACKAGE/ignitron firmware" --environment esp32dev --target buildfs
+cp -R "$PACKAGE/ignitron firmware" "$WORK/firmware-check"
+"$PIO" run --project-dir "$WORK/firmware-check" --environment esp32dev
+"$PIO" run --project-dir "$WORK/firmware-check" --environment esp32dev --target buildfs
 
 printf '\n%s\n' 'SETUP COMPLETE' \
   'IPT, VLC, PlatformIO and USB permissions are ready. Both build checks passed.' \
