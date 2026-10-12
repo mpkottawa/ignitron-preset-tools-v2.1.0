@@ -37,9 +37,10 @@ jobs:
       - name: Compile Python sources
         run: python -m py_compile ignitron_preset_tools_v2.1.py preset_capture.py preset_puller.py preset_chart.py preset_converter.py release_tools.py
       - name: Run tests
+        timeout-minutes: 3
         env:
           IGNITRON_BASELINE: Ignitron 1.9.0
-        run: python -m unittest -v
+        run: python -u -c "import faulthandler, unittest; faulthandler.dump_traceback_later(60, exit=True); unittest.main(module=None, argv=['unittest', 'discover', '-v'])"
       - name: Verify clean dual-firmware source staging
         if: runner.os == 'Linux'
         run: python release_tools.py stage-source . "${RUNNER_TEMP}/ipt-source-release"
