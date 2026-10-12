@@ -85,7 +85,7 @@ fi
   --workpath "$BUILD_ROOT/pyinstaller-macos-$ARCH" \
   --specpath "$BUILD_ROOT" \
   "${ICON_ARGS[@]}" \
-  "${SIGN_ARGS[@]}" \
+  ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"} \
   "${DATA_ARGS[@]}" \
   "$ENTRY"
 
