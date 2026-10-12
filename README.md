@@ -85,13 +85,13 @@ python3 get-platformio.py
 "$HOME/.platformio/penv/bin/platformio" --version
 ```
 
-The last command must print a PlatformIO Core version. Restart IPT after installation. A desktop app launched from the application menu may not inherit shell `PATH`, so in **Firmware > Show setup**, browse to this exact executable:
+The last command must print a PlatformIO Core version. Restart IPT after installation. A desktop app launched from the application menu may not inherit shell `PATH`, so print the executable's absolute path:
 
-```text
-/home/YOUR_USER/.platformio/penv/bin/platformio
+```bash
+readlink -f "$HOME/.platformio/penv/bin/platformio"
 ```
 
-No shell `PATH` change is required after this file is selected in IPT.
+In **Firmware > Show setup**, browse to the full path printed by that command. No shell `PATH` change is required after this file is selected in IPT.
 
 #### Give the user USB serial permission
 
