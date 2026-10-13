@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ignitron Preset Tools v2.1.01 - desktop control center."""
+"""Ignitron Preset Tools v2.1.02 - desktop control center."""
 
 import contextlib
 import ast
@@ -38,7 +38,7 @@ _VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
-APP_VERSION = "2.1.01"
+APP_VERSION = "2.1.02"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
