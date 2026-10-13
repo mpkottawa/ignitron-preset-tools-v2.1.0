@@ -108,6 +108,21 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertRegex(config, r"(?m)^#define OLED_DRIVER_SH1106\s*$")
         self.assertNotRegex(config, r"(?m)^#define OLED_DRIVER_SSD1306\s*$")
 
+    def test_dedicated_preset_led_update_does_not_pulse_fx_outputs(self):
+        led_source = (TEMPLATE / "src/SparkLEDControl.cpp").read_text(errors="replace")
+        start, end = IPT._cpp_function_span(
+            led_source, "void SparkLEDControl::updateLedAppPresetMode()")
+        function = led_source[start:end]
+        dedicated_start = function.index("#ifdef DEDICATED_PRESET_LEDS")
+        shared_start = function.index("#else", dedicated_start)
+        dedicated_path = function[dedicated_start:shared_start]
+        shared_path = function[shared_start:]
+
+        self.assertNotIn("allLedOff()", dedicated_path)
+        self.assertIn("presetNum == activePresetNum", dedicated_path)
+        self.assertIn("switchLed(presetNum", dedicated_path)
+        self.assertIn("allLedOff()", shared_path)
+
     def test_blocklist_exit_restart_waits_for_button_release(self):
         buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")
         header = (TEMPLATE / "src/SparkButtonHandler.h").read_text(errors="replace")
@@ -1373,15 +1388,19 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
     def test_public_release_versions_agree(self):
-        self.assertEqual("2.1.01", IPT.APP_VERSION)
+        self.assertEqual("2.1.02", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
         for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
-            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.01"')
-        self.assertIn('VERSION = "2.1.01"', (root / "Ignitron/src/Config_Definitions.h").read_text())
-        self.assertIn('Name=Ignitron Preset Tools 2.1.01', (root / "install_linux.sh").read_text())
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.02"')
+        self.assertIn('VERSION = "2.1.02"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.02', (root / "install_linux.sh").read_text())
+        self.assertIn('RELEASE_VERSION="2.1.02"', (root / "setup_linux.sh").read_text())
+        self.assertIn('# Ignitron Preset Tools 2.1.02', (root / "README.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "GITHUB_RELEASE.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "RELEASE_NOTES.md").read_text())
         workflow = (root / ".github/workflows/build-release.yml").read_text()
         for platform in ("Windows", "Linux", "macOS"):
-            self.assertIn(f"Ignitron-Preset-Tools-v2.1.01-{platform}", workflow)
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.02-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")

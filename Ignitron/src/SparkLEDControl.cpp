@@ -103,8 +103,19 @@ void SparkLEDControl::updateLEDs() {
 }
 
 void SparkLEDControl::updateLedAppPresetMode() {
+#ifdef DEDICATED_PRESET_LEDS
+    // Dedicated preset and FX LEDs are separate outputs. Set only the four
+    // preset LEDs here so the FX LEDs keep their current level until
+    // updateLedAppFXMode() applies the requested effect states below. Clearing
+    // every LED on each loop briefly pulsed the FX outputs and was visible as
+    // flicker on illuminated pedal labels.
+    for (int presetNum = PRESET1_NUM; presetNum <= PRESET4_NUM; presetNum++) {
+        switchLed(presetNum, presetNum == activePresetNum, false);
+    }
+#else
     allLedOff();
     switchLed(activePresetNum, true, false);
+#endif
 }
 
 void SparkLEDControl::updateLedAppFXMode() {

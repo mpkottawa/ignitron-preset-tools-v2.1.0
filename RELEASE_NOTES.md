@@ -1,4 +1,14 @@
-# Ignitron Preset Tools v2.1.01
+# Ignitron Preset Tools v2.1.02
+
+## Dedicated preset LED stability fix - 2026-10-12
+
+- Fixed visible flicker on the separate FX/letter LEDs when `DEDICATED_PRESET_LEDS` is enabled. Preset mode now updates only the four dedicated preset outputs before applying FX states, instead of clearing every LED on every loop.
+- Preserved the existing LED behavior for standard pedals without dedicated preset LEDs.
+- Added a regression test that prevents the dedicated preset path from calling `allLedOff()` and pulsing the FX outputs again.
+- Updated the application, bundled current firmware, native packages, installers, documentation, and release workflow to v2.1.02.
+- Carried forward the bundled Linux installer and all-in-one setup introduced after the initial v2.1.01 publication.
+
+The correction is narrowly scoped and does not require different GPIO assignments. It has automated coverage but still requires physical confirmation by a user with the optional dedicated preset LED hardware.
 
 ## Bundled Linux installer refresh - 2026-10-12
 

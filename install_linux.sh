@@ -50,7 +50,7 @@ chmod +x "$BIN_HOME/ignitron-preset-tools"
 cat > "$APPLICATIONS_HOME/ignitron-preset-tools.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Ignitron Preset Tools 2.1.01
+Name=Ignitron Preset Tools 2.1.02
 Comment=Build presets and control an Ignitron pedal
 Exec="$BIN_HOME/ignitron-preset-tools"
 Icon=ignitron-preset-tools
