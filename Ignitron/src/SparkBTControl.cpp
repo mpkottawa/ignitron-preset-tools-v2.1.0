@@ -14,6 +14,9 @@ bool SparkBTControl::isAppConnectedSerial_ = false;
 string SparkBTControl::serialPeerAddress_ = "";
 
 namespace {
+volatile bool serialClientConnectedForDiscovery = false;
+volatile bool serialDiscoveryRestoreScheduled = false;
+
 string formatBtAddress(const uint8_t *address) {
     if (!address) {
         return "none";
@@ -58,6 +61,35 @@ void restoreSerialDiscoverability(const char *reason) {
     Serial.printf(
         "BT_SCANMODE reason=%s status=%d connectable=1 discoverable=1 bonds=%d\n",
         reason, (int)result, esp_bt_gap_get_bond_device_num());
+}
+
+void delayedSerialDiscoverabilityRestore(void *parameter) {
+    (void)parameter;
+    // The Classic Bluetooth stack can update its scan mode after delivering
+    // ESP_SPP_CLOSE_EVT. Reapply it after that cleanup has completed.
+    vTaskDelay(pdMS_TO_TICKS(750));
+    if (!serialClientConnectedForDiscovery) {
+        restoreSerialDiscoverability("client_close_delayed");
+    } else {
+        Serial.println("BT_SCANMODE reason=client_close_delayed skipped=connected");
+    }
+    serialDiscoveryRestoreScheduled = false;
+    vTaskDelete(nullptr);
+}
+
+void scheduleSerialDiscoverabilityRestore() {
+    if (serialDiscoveryRestoreScheduled) {
+        return;
+    }
+    serialDiscoveryRestoreScheduled = true;
+    const BaseType_t result =
+        xTaskCreate(delayedSerialDiscoverabilityRestore, "bt-discoverable", 2048,
+                    nullptr, 1, nullptr);
+    if (result != pdPASS) {
+        serialDiscoveryRestoreScheduled = false;
+        Serial.printf("BT_SCANMODE reason=client_close_delayed schedule_error=%d\n",
+                      (int)result);
+    }
 }
 } // namespace
 
@@ -734,6 +766,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
                       (int)param->start.status, (unsigned int)param->start.scn,
                       (unsigned int)param->start.handle);
     } else if (event == ESP_SPP_SRV_OPEN_EVT) {
+        serialClientConnectedForDiscovery = true;
         serialPeerAddress_ = formatBtAddress(param->srv_open.rem_bda);
         Serial.println("Client Connected");
         Serial.printf("BT_SPP OPEN status=%d handle=%u peer=%s bonds=%d\n",
@@ -743,6 +776,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
                       esp_bt_gap_get_bond_device_num());
         isAppConnectedSerial_ = true;
     } else if (event == ESP_SPP_CLOSE_EVT) {
+        serialClientConnectedForDiscovery = false;
         Serial.println("Client disconnected");
         Serial.printf("BT_SPP CLOSE status=%d handle=%u async=%d peer=%s\n",
                       (int)param->close.status,
@@ -758,6 +792,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         // not reconnect to the still-bonded pedal unless the server becomes
         // explicitly connectable and discoverable again.
         restoreSerialDiscoverability("client_close");
+        scheduleSerialDiscoverabilityRestore();
     } else if (event == ESP_SPP_CONG_EVT) {
         Serial.printf("BT_SPP CONGESTION status=%d congested=%d handle=%u\n",
                       (int)param->cong.status, param->cong.cong ? 1 : 0,
