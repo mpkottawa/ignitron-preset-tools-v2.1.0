@@ -46,6 +46,19 @@ void printBondedDevices() {
                       formatBtAddress(devices[i]).c_str());
     }
 }
+
+void restoreSerialDiscoverability(const char *reason) {
+#ifdef ESP_IDF_VERSION_MAJOR
+    const esp_err_t result = esp_bt_gap_set_scan_mode(
+        ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+#else
+    const esp_err_t result = esp_bt_gap_set_scan_mode(
+        ESP_BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
+#endif
+    Serial.printf(
+        "BT_SCANMODE reason=%s status=%d connectable=1 discoverable=1 bonds=%d\n",
+        reason, (int)result, esp_bt_gap_get_bond_device_num());
+}
 } // namespace
 
 // ClientCallbacks SparkBTControl::clientCB;
@@ -740,6 +753,11 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
                           : serialPeerAddress_.c_str());
         isAppConnectedSerial_ = false;
         serialPeerAddress_.clear();
+        // BluetoothSerial enables discoverability when SPP is initialized but
+        // does not restore it after a client closes. Some Android versions do
+        // not reconnect to the still-bonded pedal unless the server becomes
+        // explicitly connectable and discoverable again.
+        restoreSerialDiscoverability("client_close");
     } else if (event == ESP_SPP_CONG_EVT) {
         Serial.printf("BT_SPP CONGESTION status=%d congested=%d handle=%u\n",
                       (int)param->cong.status, param->cong.cong ? 1 : 0,
