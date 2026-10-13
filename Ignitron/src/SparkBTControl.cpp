@@ -50,6 +50,31 @@ void printBondedDevices() {
     }
 }
 
+void configureSparkAudioClassOfDevice() {
+    // BluetoothSerial identifies itself as a computer by default. That works
+    // for generic SPP clients, but the Spark app stops considering the bonded
+    // device a compatible amp after the first connection. Match the Class of
+    // Device advertised by a real Spark 2 Audio endpoint (0x240404):
+    // Audio/Video, wearable-headset minor class, Audio + Rendering services.
+    esp_bt_cod_t requested = {};
+    requested.major = ESP_BT_COD_MAJOR_DEV_AV;
+    requested.minor = 0x01;
+    requested.service = ESP_BT_COD_SRVC_AUDIO | ESP_BT_COD_SRVC_RENDERING;
+
+    const esp_err_t setResult =
+        esp_bt_gap_set_cod(requested, ESP_BT_INIT_COD);
+    esp_bt_cod_t effective = {};
+    const esp_err_t getResult = esp_bt_gap_get_cod(&effective);
+    const uint32_t raw = (effective.service << ESP_BT_COD_SRVC_BIT_OFFSET) |
+                         (effective.major << ESP_BT_COD_MAJOR_DEV_BIT_OFFSET) |
+                         (effective.minor << 2);
+    Serial.printf(
+        "BT_COD set=%d get=%d value=0x%06lX major=%u minor=%u service=0x%03lX\n",
+        (int)setResult, (int)getResult, (unsigned long)raw,
+        (unsigned int)effective.major, (unsigned int)effective.minor,
+        (unsigned long)effective.service);
+}
+
 void restoreSerialDiscoverability(const char *reason) {
 #ifdef ESP_IDF_VERSION_MAJOR
     const esp_err_t result = esp_bt_gap_set_scan_mode(
@@ -814,6 +839,7 @@ void SparkBTControl::startBTSerial() {
     if (btSerial->begin(btNameSerial.c_str(), false)) {
         Serial.printf("Started BT Serial with name %s \n",
                       btNameSerial.c_str());
+        configureSparkAudioClassOfDevice();
         btSerial->flush();
         printSerialDiagnostics();
     } else {
