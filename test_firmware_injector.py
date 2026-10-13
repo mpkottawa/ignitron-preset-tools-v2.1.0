@@ -108,6 +108,27 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertRegex(config, r"(?m)^#define OLED_DRIVER_SH1106\s*$")
         self.assertNotRegex(config, r"(?m)^#define OLED_DRIVER_SSD1306\s*$")
 
+    def test_bluetooth_reconnect_debug_and_graceful_restart_are_installed(self):
+        bt_header = (TEMPLATE / "src/SparkBTControl.h").read_text(errors="replace")
+        bt_source = (TEMPLATE / "src/SparkBTControl.cpp").read_text(errors="replace")
+        data_source = (TEMPLATE / "src/SparkDataControl.cpp").read_text(errors="replace")
+        sketch = (TEMPLATE / "Ignitron.ino").read_text(errors="replace")
+
+        self.assertIn("IPT_BT_RECONNECT_DIAGNOSTICS_V1", bt_header)
+        self.assertIn("void prepareForRestart();", bt_header)
+        self.assertIn("void printSerialDiagnostics();", bt_header)
+        self.assertIn("BT_SPP OPEN", bt_source)
+        self.assertIn("BT_SPP CLOSE", bt_source)
+        self.assertIn("BT_AUTH success=", bt_source)
+        self.assertIn("BT_BONDS count=", bt_source)
+        self.assertIn("BT_SHUTDOWN complete", bt_source)
+        self.assertIn("btSerial->disconnect()", bt_source)
+        self.assertIn("btSerial->write(chunkData.data(), chunkData.size())", bt_source)
+        self.assertIn("bleControl->prepareForRestart()", data_source)
+        self.assertIn("BT_RX_RESET discarded=", data_source)
+        self.assertIn('u == "BTINFO"', sketch)
+        self.assertNotIn("ESP.restart();", sketch)
+
     def test_dedicated_preset_led_update_does_not_pulse_fx_outputs(self):
         led_source = (TEMPLATE / "src/SparkLEDControl.cpp").read_text(errors="replace")
         start, end = IPT._cpp_function_span(

@@ -7,8 +7,46 @@
 
 #include "SparkBTControl.h"
 #include <LittleFS.h>
+#include <esp_bt_device.h>
+#include <esp_gap_bt_api.h>
 
 bool SparkBTControl::isAppConnectedSerial_ = false;
+string SparkBTControl::serialPeerAddress_ = "";
+
+namespace {
+string formatBtAddress(const uint8_t *address) {
+    if (!address) {
+        return "none";
+    }
+    char text[18];
+    snprintf(text, sizeof(text), "%02X:%02X:%02X:%02X:%02X:%02X",
+             address[0], address[1], address[2], address[3], address[4],
+             address[5]);
+    return string(text);
+}
+
+void printBondedDevices() {
+    const int total = esp_bt_gap_get_bond_device_num();
+    Serial.printf("BT_BONDS count=%d\n", total);
+    if (total <= 0) {
+        return;
+    }
+
+    const int capacity = 20;
+    esp_bd_addr_t devices[capacity];
+    int requested = total < capacity ? total : capacity;
+    const esp_err_t result =
+        esp_bt_gap_get_bond_device_list(&requested, devices);
+    Serial.printf("BT_BONDS result=%d listed=%d\n", (int)result, requested);
+    if (result != ESP_OK) {
+        return;
+    }
+    for (int i = 0; i < requested; ++i) {
+        Serial.printf("BT_BOND index=%d address=%s\n", i,
+                      formatBtAddress(devices[i]).c_str());
+    }
+}
+} // namespace
 
 // ClientCallbacks SparkBTControl::clientCB;
 
@@ -617,14 +655,18 @@ void SparkBTControl::notifyClients(const vector<CmdData> &msg) {
         DEBUG_PRINTLN("Sending message via BT Serial:");
         for (auto chunk : msg) {
             ByteVector chunkData = chunk.data;
-            for (auto by : chunkData) {
-                if (by < 16) {
-                    DEBUG_PRINT("0");
-                }
-                DEBUG_PRINT(by, HEX);
-                btSerial->write(by);
+            if (chunkData.empty()) {
+                continue;
             }
-            DEBUG_PRINTLN();
+            const size_t written =
+                btSerial->write(chunkData.data(), chunkData.size());
+            if (written != chunkData.size()) {
+                Serial.printf("BT_TX_ERROR requested=%u written=%u client=%d\n",
+                              (unsigned int)chunkData.size(),
+                              (unsigned int)written,
+                              btSerial->hasClient() ? 1 : 0);
+                break;
+            }
             DEBUG_PRINTF("Free Heap size: %d\n", ESP.getFreeHeap());
         }
     }
@@ -674,27 +716,94 @@ void SparkBTControl::stopScan() {
 }
 
 void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param) {
-    if (event == ESP_SPP_SRV_OPEN_EVT) {
+    if (event == ESP_SPP_START_EVT) {
+        Serial.printf("BT_SPP START status=%d scn=%u handle=%u\n",
+                      (int)param->start.status, (unsigned int)param->start.scn,
+                      (unsigned int)param->start.handle);
+    } else if (event == ESP_SPP_SRV_OPEN_EVT) {
+        serialPeerAddress_ = formatBtAddress(param->srv_open.rem_bda);
         Serial.println("Client Connected");
+        Serial.printf("BT_SPP OPEN status=%d handle=%u peer=%s bonds=%d\n",
+                      (int)param->srv_open.status,
+                      (unsigned int)param->srv_open.handle,
+                      serialPeerAddress_.c_str(),
+                      esp_bt_gap_get_bond_device_num());
         isAppConnectedSerial_ = true;
-    }
-    if (event == ESP_SPP_CLOSE_EVT) {
+    } else if (event == ESP_SPP_CLOSE_EVT) {
         Serial.println("Client disconnected");
+        Serial.printf("BT_SPP CLOSE status=%d handle=%u async=%d peer=%s\n",
+                      (int)param->close.status,
+                      (unsigned int)param->close.handle,
+                      param->close.async ? 1 : 0,
+                      serialPeerAddress_.empty()
+                          ? "none"
+                          : serialPeerAddress_.c_str());
         isAppConnectedSerial_ = false;
+        serialPeerAddress_.clear();
+    } else if (event == ESP_SPP_CONG_EVT) {
+        Serial.printf("BT_SPP CONGESTION status=%d congested=%d handle=%u\n",
+                      (int)param->cong.status, param->cong.cong ? 1 : 0,
+                      (unsigned int)param->cong.handle);
+    } else if (event == ESP_SPP_UNINIT_EVT) {
+        Serial.printf("BT_SPP STOP status=%d\n", (int)param->uninit.status);
     }
 }
 
 void SparkBTControl::startBTSerial() {
     btSerial = new BluetoothSerial();
     btSerial->register_callback(serialCallback);
+    btSerial->onAuthComplete([](boolean success) {
+        Serial.printf("BT_AUTH success=%d bonds=%d\n", success ? 1 : 0,
+                      esp_bt_gap_get_bond_device_num());
+        printBondedDevices();
+    });
     // btStart();
     if (btSerial->begin(btNameSerial.c_str(), false)) {
         Serial.printf("Started BT Serial with name %s \n",
                       btNameSerial.c_str());
         btSerial->flush();
+        printSerialDiagnostics();
     } else {
         Serial.println("BT Serial start failed!");
     }
+}
+
+void SparkBTControl::printSerialDiagnostics() {
+    if (!btSerial) {
+        Serial.println("BT_DIAG mode=INACTIVE client=0 peer=none");
+        return;
+    }
+    const uint8_t *localAddress = esp_bt_dev_get_address();
+    Serial.printf("BT_DIAG mode=SERIAL ready=%d client=%d local=%s peer=%s\n",
+                  btSerial->isReady(false, 0) ? 1 : 0,
+                  btSerial->hasClient() ? 1 : 0,
+                  formatBtAddress(localAddress).c_str(),
+                  serialPeerAddress_.empty() ? "none"
+                                             : serialPeerAddress_.c_str());
+    printBondedDevices();
+}
+
+void SparkBTControl::prepareForRestart() {
+    if (!btSerial) {
+        Serial.println("BT_SHUTDOWN mode=INACTIVE");
+        return;
+    }
+
+    const bool hadClient = btSerial->hasClient();
+    Serial.printf("BT_SHUTDOWN begin client=%d peer=%s\n", hadClient ? 1 : 0,
+                  serialPeerAddress_.empty() ? "none"
+                                             : serialPeerAddress_.c_str());
+    if (hadClient) {
+        const bool disconnected = btSerial->disconnect();
+        Serial.printf("BT_SHUTDOWN disconnect=%d\n", disconnected ? 1 : 0);
+        delay(100);
+    }
+    btSerial->end();
+    delete btSerial;
+    btSerial = nullptr;
+    isAppConnectedSerial_ = false;
+    serialPeerAddress_.clear();
+    Serial.println("BT_SHUTDOWN complete");
 }
 
 void SparkBTControl::stopBTSerial() {

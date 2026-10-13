@@ -167,6 +167,7 @@ public:
     void resetLastKeyboardButtonPressed();
 
     void restartESP(bool resetSparkMode = false);
+    void printBluetoothDiagnostics();
     bool blockCurrentAmp();
     bool clearBlockedAmp();
     bool enterBlocklistMenu();
@@ -232,6 +233,7 @@ private:
     static OperationMode sparkModeAmp;
     static OperationMode sparkModeApp;
     ByteVector currentBTMsg;
+    bool serialClientWasConnected_ = false;
     static AmpType sparkAmpType;
     static string sparkAmpName;
     static bool withDelay;

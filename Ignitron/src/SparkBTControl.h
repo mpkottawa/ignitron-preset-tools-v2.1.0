@@ -165,6 +165,11 @@ public:
 
     void startBTSerial();
     void stopBTSerial();
+    // IPT_BT_RECONNECT_DIAGNOSTICS_V1
+    // Emit Bluetooth Classic state over USB and close SPP cleanly before a
+    // software restart so Android does not retain a stale session.
+    void printSerialDiagnostics();
+    void prepareForRestart();
 
     bool byteAvailable() {
         if (btSerial != NULL) {
@@ -203,6 +208,7 @@ private:
     // isClientConnected will be set when a client is connected to ESP in AMP mode
     bool isAppConnectedBLE_ = false;
     static bool isAppConnectedSerial_;
+    static string serialPeerAddress_;
     notify_callback notifyCB_;
 
     const uint32_t kScanTime = 0; /** 0 = scan forever */

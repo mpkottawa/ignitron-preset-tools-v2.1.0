@@ -224,6 +224,7 @@ void loop() {
 //   PING
 //   FSINFO
 //   HWINFO
+//   BTINFO
 //   LISTFILES
 //   MIRROR ON|OFF
 //   TUNERSTREAM ON|OFF
@@ -952,6 +953,8 @@ static void handleSerialCommands() {
                 printFsInfo();
             } else if (u == "HWINFO") {
                 printHwInfo();
+            } else if (u == "BTINFO") {
+                spark_dc.printBluetoothDiagnostics();
             } else if (u == "LISTFILES") {
                 listFiles();
             } else if (u == "LISTPRESETS") {
@@ -1009,7 +1012,7 @@ static void handleSerialCommands() {
                         Serial.println("OK CAPTUREMODE RESTARTING");
                         Serial.flush();
                         delay(150);
-                        ESP.restart();
+                        spark_dc.restartESP(false);
                     }
                 }
             } else if (u == "CAPTUREKEEPALIVE") {
@@ -1037,8 +1040,9 @@ static void handleSerialCommands() {
                 spark_dc.restartESP(true);
             } else if (u == "RESTART") {
                 Serial.println("OK RESTART");
-                delay(250);
-                ESP.restart();
+                Serial.flush();
+                delay(150);
+                spark_dc.restartESP(false);
             }
         } else {
             buf += c;

@@ -248,7 +248,20 @@ void SparkDataControl::restartESP(bool resetSparkMode) {
         }
     }
     Serial.println();
+    if (bleControl) {
+        bleControl->prepareForRestart();
+    }
+    Serial.flush();
+    delay(100);
     ESP.restart();
+}
+
+void SparkDataControl::printBluetoothDiagnostics() {
+    if (bleControl) {
+        bleControl->printSerialDiagnostics();
+    } else {
+        Serial.println("BT_DIAG controller=missing");
+    }
 }
 
 bool SparkDataControl::blockCurrentAmp() {
@@ -613,6 +626,17 @@ void SparkDataControl::checkForUpdates() {
 #endif
 
     if (operationMode_ == SPARK_MODE_AMP) {
+
+        const bool serialClientConnected =
+            currentBTMode_ == BT_MODE_SERIAL && bleControl &&
+            bleControl->isAppConnected();
+        if (serialClientWasConnected_ && !serialClientConnected &&
+            !currentBTMsg.empty()) {
+            Serial.printf("BT_RX_RESET discarded=%u\n",
+                          (unsigned int)currentBTMsg.size());
+            currentBTMsg.clear();
+        }
+        serialClientWasConnected_ = serialClientConnected;
 
         // Read incoming (serial) Bluetooth data, if available
         while (bleControl && bleControl->byteAvailable()) {
