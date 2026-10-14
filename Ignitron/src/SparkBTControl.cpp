@@ -7,7 +7,8 @@
 
 #include "SparkBTControl.h"
 #include <LittleFS.h>
-#include "SparkDualModeBridge.h"
+#include <esp_a2dp_api.h>
+#include <esp_avrc_api.h>
 #include <esp_bt_device.h>
 #include <esp_gap_ble_api.h>
 #include <esp_gap_bt_api.h>
@@ -20,7 +21,15 @@ string SparkBTControl::serialPeerAddress_ = "";
 namespace {
 volatile bool serialClientConnectedForDiscovery = false;
 volatile bool serialDiscoveryRestoreScheduled = false;
-SparkDataControl *dualModeDataControl = nullptr;
+volatile bool serialAudioProfileStarting = false;
+volatile bool serialAudioProfileReady = false;
+volatile bool serialAudioConnected = false;
+volatile esp_a2d_connection_state_t serialAudioConnectionState =
+    ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+volatile bool serialAudioReconnectScheduled = false;
+volatile bool serialAvrcControllerReady = false;
+volatile bool serialAvrcTargetReady = false;
+SparkDataControl *serialSessionDataControl = nullptr;
 volatile bool serialBleClientConnected = false;
 volatile bool serialBleNotificationsEnabled = false;
 volatile bool serialBleAdvertising = false;
@@ -236,19 +245,11 @@ void stopSerialBleBridge() {
     Serial.printf("BT_BLE_BRIDGE stopped status=%d\n", (int)result);
 }
 
-void queueDualModeMessage(const uint8_t *data, size_t length) {
-    if (!data || length == 0) {
-        return;
+void resetSerialSession(bool connected) {
+    if (serialSessionDataControl) {
+        serialSessionDataControl->resetAmpClientSession();
     }
-    ByteVector message(data, data + length);
-    SparkDataControl::queueMessage(message);
-}
-
-void resetDualModeSession(bool connected) {
-    if (dualModeDataControl) {
-        dualModeDataControl->resetAmpClientSession();
-    }
-    Serial.printf("BT_DUAL_SESSION connected=%d reset=1\n",
+    Serial.printf("BT_SERIAL_SESSION connected=%d reset=1\n",
                   connected ? 1 : 0);
 }
 
@@ -330,7 +331,6 @@ void delayedSerialDiscoverabilityRestore(void *parameter) {
     vTaskDelay(pdMS_TO_TICKS(750));
     if (!serialClientConnectedForDiscovery) {
         restoreSerialDiscoverability("client_close_delayed");
-        sparkDualModeRestartAdvertising("spp_close_delayed");
     } else {
         Serial.println("BT_SCANMODE reason=client_close_delayed skipped=connected");
     }
@@ -351,6 +351,183 @@ void scheduleSerialDiscoverabilityRestore() {
         Serial.printf("BT_SCANMODE reason=client_close_delayed schedule_error=%d\n",
                       (int)result);
     }
+}
+
+void discardSerialAudio(const uint8_t *data, uint32_t length) {
+    (void)data;
+    (void)length;
+}
+
+void delayedSerialAudioReconnect(void *parameter) {
+    (void)parameter;
+    // Let Android finish noticing the newly available SDP records before the
+    // pedal reconnects the audio profile that makes it visible to Spark.
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    if (!serialAudioProfileReady ||
+        serialAudioConnectionState != ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+        Serial.printf("BT_A2DP RECONNECT skipped ready=%d state=%d\n",
+                      serialAudioProfileReady ? 1 : 0,
+                      (int)serialAudioConnectionState);
+        serialAudioReconnectScheduled = false;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    int bondedCount = esp_bt_gap_get_bond_device_num();
+    if (bondedCount != 1) {
+        // Never guess which phone to wake when more than one has been paired.
+        // A first-time or multi-phone setup remains discoverable and can be
+        // selected normally from Android/Spark.
+        Serial.printf("BT_A2DP RECONNECT skipped bonds=%d\n", bondedCount);
+        serialAudioReconnectScheduled = false;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    esp_bd_addr_t bondedDevice = {};
+    int requested = 1;
+    const esp_err_t listResult =
+        esp_bt_gap_get_bond_device_list(&requested, &bondedDevice);
+    esp_err_t connectResult = ESP_FAIL;
+    if (listResult == ESP_OK && requested == 1 && serialAudioProfileReady &&
+        serialAudioConnectionState == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+        connectResult = esp_a2d_sink_connect(bondedDevice);
+    }
+    Serial.printf("BT_A2DP RECONNECT peer=%s list=%d connect=%d\n",
+                  formatBtAddress(bondedDevice).c_str(), (int)listResult,
+                  (int)connectResult);
+    serialAudioReconnectScheduled = false;
+    vTaskDelete(nullptr);
+}
+
+void scheduleSerialAudioReconnect() {
+    if (serialAudioReconnectScheduled) {
+        return;
+    }
+    serialAudioReconnectScheduled = true;
+    const BaseType_t result =
+        xTaskCreate(delayedSerialAudioReconnect, "bt-audio-reconnect", 3072,
+                    nullptr, 1, nullptr);
+    if (result != pdPASS) {
+        serialAudioReconnectScheduled = false;
+        Serial.printf("BT_A2DP RECONNECT task_error=%d\n", (int)result);
+    }
+}
+
+void serialAvrcControllerCallback(esp_avrc_ct_cb_event_t event,
+                                  esp_avrc_ct_cb_param_t *param) {
+    (void)param;
+    if (event == ESP_AVRC_CT_CONNECTION_STATE_EVT) {
+        Serial.printf("BT_AVRCP CT connection=%d\n",
+                      param && param->conn_stat.connected ? 1 : 0);
+    }
+}
+
+void serialAvrcTargetCallback(esp_avrc_tg_cb_event_t event,
+                              esp_avrc_tg_cb_param_t *param) {
+    (void)param;
+    if (event == ESP_AVRC_TG_CONNECTION_STATE_EVT) {
+        Serial.printf("BT_AVRCP TG connection=%d\n",
+                      param && param->conn_stat.connected ? 1 : 0);
+    }
+}
+
+void serialAudioCallback(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param) {
+    if (!param) {
+        return;
+    }
+    if (event == ESP_A2D_PROF_STATE_EVT) {
+        serialAudioProfileStarting = false;
+        serialAudioProfileReady =
+            param->a2d_prof_stat.init_state == ESP_A2D_INIT_SUCCESS;
+        Serial.printf("BT_A2DP PROFILE ready=%d state=%d\n",
+                      serialAudioProfileReady ? 1 : 0,
+                      (int)param->a2d_prof_stat.init_state);
+        if (serialAudioProfileReady) {
+            configureSparkAudioClassOfDevice();
+            restoreSerialDiscoverability("a2dp_ready");
+            scheduleSerialAudioReconnect();
+        }
+    } else if (event == ESP_A2D_CONNECTION_STATE_EVT) {
+        serialAudioConnectionState = param->conn_stat.state;
+        serialAudioConnected =
+            param->conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED;
+        Serial.printf("BT_A2DP CONNECTION state=%d connected=%d peer=%s reason=%d\n",
+                      (int)param->conn_stat.state,
+                      serialAudioConnected ? 1 : 0,
+                      formatBtAddress(param->conn_stat.remote_bda).c_str(),
+                      (int)param->conn_stat.disc_rsn);
+        if (param->conn_stat.state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
+            restoreSerialDiscoverability("a2dp_disconnect");
+            scheduleSerialAudioReconnect();
+        }
+    } else if (event == ESP_A2D_AUDIO_STATE_EVT) {
+        Serial.printf("BT_A2DP AUDIO state=%d\n", (int)param->audio_stat.state);
+    }
+}
+
+void startSerialAudioProfile() {
+    if (serialAudioProfileStarting || serialAudioProfileReady) {
+        return;
+    }
+    serialAudioProfileStarting = true;
+
+    // Match Espressif's supported A2DP sink startup order. Android uses the
+    // AudioSink/AVRCP SDP records to find an already-paired Spark immediately,
+    // instead of relying on the Spark app's very short Classic inquiry.
+    const esp_err_t avrcControllerInit = esp_avrc_ct_init();
+    const esp_err_t avrcControllerCallback =
+        esp_avrc_ct_register_callback(serialAvrcControllerCallback);
+    serialAvrcControllerReady = avrcControllerInit == ESP_OK;
+
+    const esp_err_t avrcTargetInit = esp_avrc_tg_init();
+    const esp_err_t avrcTargetCallback =
+        esp_avrc_tg_register_callback(serialAvrcTargetCallback);
+    serialAvrcTargetReady = avrcTargetInit == ESP_OK;
+    esp_avrc_rn_evt_cap_mask_t eventCapabilities = {};
+    esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET,
+                                       &eventCapabilities,
+                                       ESP_AVRC_RN_VOLUME_CHANGE);
+    const esp_err_t avrcCapabilities =
+        esp_avrc_tg_set_rn_evt_cap(&eventCapabilities);
+
+    const esp_err_t initResult = esp_a2d_sink_init();
+    const esp_err_t callbackResult =
+        esp_a2d_register_callback(serialAudioCallback);
+    const esp_err_t dataResult =
+        esp_a2d_sink_register_data_callback(discardSerialAudio);
+    Serial.printf(
+        "BT_A2DP INIT avrc_ct=%d/%d avrc_tg=%d/%d caps=%d a2dp=%d callback=%d data=%d\n",
+        (int)avrcControllerInit, (int)avrcControllerCallback,
+        (int)avrcTargetInit, (int)avrcTargetCallback, (int)avrcCapabilities,
+        (int)initResult, (int)callbackResult, (int)dataResult);
+    if (initResult != ESP_OK) {
+        serialAudioProfileStarting = false;
+    }
+}
+
+void stopSerialAudioProfile() {
+    if (!serialAudioProfileStarting && !serialAudioProfileReady) {
+        return;
+    }
+    const esp_err_t result = esp_a2d_sink_deinit();
+    const esp_err_t avrcTargetResult = serialAvrcTargetReady
+                                           ? esp_avrc_tg_deinit()
+                                           : ESP_OK;
+    const esp_err_t avrcControllerResult = serialAvrcControllerReady
+                                               ? esp_avrc_ct_deinit()
+                                               : ESP_OK;
+    Serial.printf(
+        "BT_A2DP STOP status=%d avrc_tg=%d avrc_ct=%d connected=%d\n",
+        (int)result, (int)avrcTargetResult, (int)avrcControllerResult,
+        serialAudioConnected ? 1 : 0);
+    serialAudioProfileStarting = false;
+    serialAudioProfileReady = false;
+    serialAudioConnected = false;
+    serialAudioConnectionState = ESP_A2D_CONNECTION_STATE_DISCONNECTED;
+    serialAvrcControllerReady = false;
+    serialAvrcTargetReady = false;
+    delay(50);
 }
 } // namespace
 
@@ -980,15 +1157,6 @@ void SparkBTControl::notifyClients(const vector<CmdData> &msg) {
         }
     }
 
-    if (sparkDualModeConnected()) {
-        for (const auto &block : msg) {
-            if (block.data.empty()) {
-                continue;
-            }
-            sparkDualModeNotify(block.data.data(), block.data.size());
-        }
-    }
-
     if (btSerial && btSerial->hasClient()) {
         DEBUG_PRINTLN("Sending message via BT Serial:");
         for (auto chunk : msg) {
@@ -1069,10 +1237,13 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
                       (int)param->start.status, (unsigned int)param->start.scn,
                       (unsigned int)param->start.handle);
         if (param->start.status == ESP_SPP_SUCCESS) {
-            sparkDualModeRestartAdvertising("spp_start");
+            // The Spark app performs only a short Classic inquiry for Gen-1
+            // amps, so keep the endpoint explicitly discoverable.
+            restoreSerialDiscoverability("spp_start");
+            startSerialAudioProfile();
         }
     } else if (event == ESP_SPP_SRV_OPEN_EVT) {
-        resetDualModeSession(true);
+        resetSerialSession(true);
         serialClientConnectedForDiscovery = true;
         serialPeerAddress_ = formatBtAddress(param->srv_open.rem_bda);
         Serial.println("Client Connected");
@@ -1084,7 +1255,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         isAppConnectedSerial_ = true;
     } else if (event == ESP_SPP_CLOSE_EVT) {
         serialClientConnectedForDiscovery = false;
-        resetDualModeSession(false);
+        resetSerialSession(false);
         Serial.println("Client disconnected");
         Serial.printf("BT_SPP CLOSE status=%d handle=%u async=%d peer=%s\n",
                       (int)param->close.status,
@@ -1100,7 +1271,6 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         // not reconnect to the still-bonded pedal unless the server becomes
         // explicitly connectable and discoverable again.
         restoreSerialDiscoverability("client_close");
-        sparkDualModeRestartAdvertising("spp_close");
         scheduleSerialDiscoverabilityRestore();
     } else if (event == ESP_SPP_CONG_EVT) {
         Serial.printf("BT_SPP CONGESTION status=%d congested=%d handle=%u\n",
@@ -1112,20 +1282,29 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
 }
 
 void SparkBTControl::startBTSerial() {
-    dualModeDataControl = spark_dc_;
-    sparkDualModeStart(queueDualModeMessage, resetDualModeSession);
+    // Spark 40 is a Classic SPP device in the current Spark app. Advertising
+    // the companion FFC0 BLE service at the same time makes Classic inquiry
+    // responses arrive after the app's three-second scan timeout. Keep SRL
+    // mode Classic-only; BLE remains available as its separate user-selected
+    // pedal mode.
+    serialSessionDataControl = spark_dc_;
     btSerial = new BluetoothSerial();
     btSerial->register_callback(serialCallback);
     btSerial->onAuthComplete([](boolean success) {
         Serial.printf("BT_AUTH success=%d bonds=%d\n", success ? 1 : 0,
                       esp_bt_gap_get_bond_device_num());
         printBondedDevices();
+        if (success) {
+            // Pairing may update the controller scan state. Keep the endpoint
+            // visible so the app can rediscover the still-bonded pedal on its
+            // next launch without requiring Android to forget it first.
+            restoreSerialDiscoverability("auth_complete");
+        }
     });
     // btStart();
     if (btSerial->begin(btNameSerial.c_str(), false)) {
         Serial.printf("Started BT Serial with name %s \n",
                       btNameSerial.c_str());
-        configureSparkAudioClassOfDevice();
         btSerial->flush();
         printSerialDiagnostics();
     } else {
@@ -1163,8 +1342,8 @@ void SparkBTControl::prepareForRestart() {
         Serial.printf("BT_SHUTDOWN disconnect=%d\n", disconnected ? 1 : 0);
         delay(100);
     }
-    sparkDualModeStop();
-    dualModeDataControl = nullptr;
+    stopSerialAudioProfile();
+    serialSessionDataControl = nullptr;
     btSerial->end();
     delete btSerial;
     btSerial = nullptr;
@@ -1175,8 +1354,8 @@ void SparkBTControl::prepareForRestart() {
 
 void SparkBTControl::stopBTSerial() {
     // Stop Bluetooth Serial
-    sparkDualModeStop();
-    dualModeDataControl = nullptr;
+    stopSerialAudioProfile();
+    serialSessionDataControl = nullptr;
     btSerial->end();
     delete btSerial;
     btSerial = nullptr;
@@ -1184,8 +1363,7 @@ void SparkBTControl::stopBTSerial() {
 }
 
 const bool SparkBTControl::isAppConnected() const {
-    return isAppConnectedBLE_ || isAppConnectedSerial_ ||
-           sparkDualModeConnected();
+    return isAppConnectedBLE_ || isAppConnectedSerial_;
 }
 
 void SparkBTControl::stopBLEServer() {
