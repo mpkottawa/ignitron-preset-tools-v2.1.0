@@ -132,6 +132,25 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertIn("ESP_BT_COD_SRVC_AUDIO | ESP_BT_COD_SRVC_RENDERING", bt_source)
         self.assertIn("esp_bt_gap_set_cod(requested, ESP_BT_INIT_COD)", bt_source)
         self.assertIn("BT_COD set=%d get=%d value=0x%06lX", bt_source)
+        self.assertIn("BT_BLE_BRIDGE starting service=FFC0", bt_source)
+        self.assertIn("serialBleAdvertisedServiceUuid[2] = {0xC0, 0xFF}", bt_source)
+        self.assertIn("esp_ble_gatts_register_callback(serialBleGattCallback)", bt_source)
+        self.assertIn("esp_ble_gatts_create_attr_tab(", bt_source)
+        self.assertIn("serialBleServiceUuid = 0xFFC0", bt_source)
+        self.assertIn("serialBleWriteUuid = 0xFFC1", bt_source)
+        self.assertIn("serialBleNotifyUuid = 0xFFC2", bt_source)
+        self.assertIn("SparkDataControl::queueMessage(message)", bt_source)
+        self.assertIn("esp_ble_gatts_send_indicate(", bt_source)
+        self.assertIn("serialBleNotificationsEnabled", bt_source)
+        start, end = IPT._cpp_function_span(
+            bt_source, "void SparkBTControl::startBTSerial()")
+        serial_start = bt_source[start:end]
+        self.assertIn("startSerialBleBridge();", serial_start)
+        self.assertNotIn("startServer();", serial_start)
+        self.assertLess(
+            serial_start.index("configureSparkAudioClassOfDevice();"),
+            serial_start.index("startSerialBleBridge();"),
+        )
         self.assertIn("BT_SHUTDOWN complete", bt_source)
         self.assertIn("btSerial->disconnect()", bt_source)
         self.assertIn("btSerial->write(chunkData.data(), chunkData.size())", bt_source)

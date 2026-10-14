@@ -68,9 +68,7 @@ public:
      *
      * @return TRUE if connected
      */
-    const bool isAppConnected() const {
-        return isAppConnectedBLE_ || isAppConnectedSerial_;
-    }
+    const bool isAppConnected() const;
     /**
      * @brief  Initiates connection to the Spark Amp
      *
