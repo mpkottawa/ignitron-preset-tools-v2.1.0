@@ -7,6 +7,7 @@
 
 #include "SparkBTControl.h"
 #include <LittleFS.h>
+#include "SparkDualModeBridge.h"
 #include <esp_bt_device.h>
 #include <esp_gap_ble_api.h>
 #include <esp_gap_bt_api.h>
@@ -19,6 +20,7 @@ string SparkBTControl::serialPeerAddress_ = "";
 namespace {
 volatile bool serialClientConnectedForDiscovery = false;
 volatile bool serialDiscoveryRestoreScheduled = false;
+SparkDataControl *dualModeDataControl = nullptr;
 volatile bool serialBleClientConnected = false;
 volatile bool serialBleNotificationsEnabled = false;
 volatile bool serialBleAdvertising = false;
@@ -234,6 +236,22 @@ void stopSerialBleBridge() {
     Serial.printf("BT_BLE_BRIDGE stopped status=%d\n", (int)result);
 }
 
+void queueDualModeMessage(const uint8_t *data, size_t length) {
+    if (!data || length == 0) {
+        return;
+    }
+    ByteVector message(data, data + length);
+    SparkDataControl::queueMessage(message);
+}
+
+void resetDualModeSession(bool connected) {
+    if (dualModeDataControl) {
+        dualModeDataControl->resetAmpClientSession();
+    }
+    Serial.printf("BT_DUAL_SESSION connected=%d reset=1\n",
+                  connected ? 1 : 0);
+}
+
 string formatBtAddress(const uint8_t *address) {
     if (!address) {
         return "none";
@@ -312,6 +330,7 @@ void delayedSerialDiscoverabilityRestore(void *parameter) {
     vTaskDelay(pdMS_TO_TICKS(750));
     if (!serialClientConnectedForDiscovery) {
         restoreSerialDiscoverability("client_close_delayed");
+        sparkDualModeRestartAdvertising("spp_close_delayed");
     } else {
         Serial.println("BT_SCANMODE reason=client_close_delayed skipped=connected");
     }
@@ -818,6 +837,9 @@ void SparkBTControl::startServer() {
 
     server_ = NimBLEDevice::createServer();
     server_->setCallbacks(this);
+    // Present one stable app endpoint. Restart advertising only after NimBLE
+    // has fully removed the previous client and completed disconnect cleanup.
+    server_->advertiseOnDisconnect(true);
 
     sparkService_ = server_->createService(
         SPARK_BLE_SERVICE_UUID);
@@ -878,9 +900,10 @@ void SparkBTControl::startServer() {
      *  to false as it will extend battery life at the expense of less data sent.
      */
     advertising_->setScanResponse(true);
-    advertising_->start();
+    const bool advertisingStarted = advertising_->start();
 
-    Serial.println("Advertising Started");
+    Serial.printf("Advertising Started status=%d\n",
+                  advertisingStarted ? 1 : 0);
 }
 
 void SparkBTControl::onWrite(NimBLECharacteristic *pCharacteristic) {
@@ -957,6 +980,15 @@ void SparkBTControl::notifyClients(const vector<CmdData> &msg) {
         }
     }
 
+    if (sparkDualModeConnected()) {
+        for (const auto &block : msg) {
+            if (block.data.empty()) {
+                continue;
+            }
+            sparkDualModeNotify(block.data.data(), block.data.size());
+        }
+    }
+
     if (btSerial && btSerial->hasClient()) {
         DEBUG_PRINTLN("Sending message via BT Serial:");
         for (auto chunk : msg) {
@@ -981,10 +1013,19 @@ void SparkBTControl::notifyClients(const vector<CmdData> &msg) {
 // AMP Mode
 void SparkBTControl::onConnect(NimBLEServer *pServer_,
                                ble_gap_conn_desc *desc) {
+    // Android can retain service and notification state between app sessions.
+    // Start every GATT connection with a clean Spark protocol parser/queue.
+    if (spark_dc_) {
+        spark_dc_->resetAmpClientSession();
+    }
     isAppConnectedBLE_ = true;
-    Serial.println("Multi-connect support: start advertising");
-    //	pServer->updateConnParams(desc->conn_handle, 40, 80, 5, 51);
-    NimBLEDevice::startAdvertising();
+    Serial.printf(
+        "BT_BLE CONNECT handle=%u bonded=%d encrypted=%d authenticated=%d\n",
+        (unsigned int)desc->conn_handle, desc->sec_state.bonded ? 1 : 0,
+        desc->sec_state.encrypted ? 1 : 0,
+        desc->sec_state.authenticated ? 1 : 0);
+    // A Spark amp exposes one app connection at a time. Advertising resumes
+    // automatically after disconnect via advertiseOnDisconnect(true).
 }
 
 // APP mode
@@ -995,11 +1036,12 @@ void SparkBTControl::onConnect(NimBLEClient *pClient_) {
 
 // AMP mode when App is disconnected
 void SparkBTControl::onDisconnect(NimBLEServer *pServer_) {
-    Serial.println("Client disconnected");
+    Serial.println("BT_BLE DISCONNECT cleanup=complete advertising=auto");
     isAppConnectedBLE_ = false;
     notificationCount = 0;
-    Serial.println("Start advertising");
-    NimBLEDevice::startAdvertising();
+    if (spark_dc_) {
+        spark_dc_->resetAmpClientSession();
+    }
 }
 
 // APP mode when Amp is disconnected
@@ -1027,13 +1069,10 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
                       (int)param->start.status, (unsigned int)param->start.scn,
                       (unsigned int)param->start.handle);
         if (param->start.status == ESP_SPP_SUCCESS) {
-            // BluetoothSerial::begin() returns before the asynchronous SPP
-            // server-start event. Register GATT only after Bluedroid has
-            // completed that initialization so the FFC0 companion advert is
-            // reliably available for the Spark app's reconnect scan.
-            startSerialBleBridge();
+            sparkDualModeRestartAdvertising("spp_start");
         }
     } else if (event == ESP_SPP_SRV_OPEN_EVT) {
+        resetDualModeSession(true);
         serialClientConnectedForDiscovery = true;
         serialPeerAddress_ = formatBtAddress(param->srv_open.rem_bda);
         Serial.println("Client Connected");
@@ -1045,6 +1084,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         isAppConnectedSerial_ = true;
     } else if (event == ESP_SPP_CLOSE_EVT) {
         serialClientConnectedForDiscovery = false;
+        resetDualModeSession(false);
         Serial.println("Client disconnected");
         Serial.printf("BT_SPP CLOSE status=%d handle=%u async=%d peer=%s\n",
                       (int)param->close.status,
@@ -1060,6 +1100,7 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         // not reconnect to the still-bonded pedal unless the server becomes
         // explicitly connectable and discoverable again.
         restoreSerialDiscoverability("client_close");
+        sparkDualModeRestartAdvertising("spp_close");
         scheduleSerialDiscoverabilityRestore();
     } else if (event == ESP_SPP_CONG_EVT) {
         Serial.printf("BT_SPP CONGESTION status=%d congested=%d handle=%u\n",
@@ -1071,6 +1112,8 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
 }
 
 void SparkBTControl::startBTSerial() {
+    dualModeDataControl = spark_dc_;
+    sparkDualModeStart(queueDualModeMessage, resetDualModeSession);
     btSerial = new BluetoothSerial();
     btSerial->register_callback(serialCallback);
     btSerial->onAuthComplete([](boolean success) {
@@ -1120,7 +1163,8 @@ void SparkBTControl::prepareForRestart() {
         Serial.printf("BT_SHUTDOWN disconnect=%d\n", disconnected ? 1 : 0);
         delay(100);
     }
-    stopSerialBleBridge();
+    sparkDualModeStop();
+    dualModeDataControl = nullptr;
     btSerial->end();
     delete btSerial;
     btSerial = nullptr;
@@ -1131,7 +1175,8 @@ void SparkBTControl::prepareForRestart() {
 
 void SparkBTControl::stopBTSerial() {
     // Stop Bluetooth Serial
-    stopSerialBleBridge();
+    sparkDualModeStop();
+    dualModeDataControl = nullptr;
     btSerial->end();
     delete btSerial;
     btSerial = nullptr;
@@ -1140,7 +1185,7 @@ void SparkBTControl::stopBTSerial() {
 
 const bool SparkBTControl::isAppConnected() const {
     return isAppConnectedBLE_ || isAppConnectedSerial_ ||
-           serialBleClientConnected;
+           sparkDualModeConnected();
 }
 
 void SparkBTControl::stopBLEServer() {

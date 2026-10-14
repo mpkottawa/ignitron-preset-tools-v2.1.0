@@ -1238,6 +1238,29 @@ void SparkDataControl::queueMessage(ByteVector &blk) {
     }
 }
 
+void SparkDataControl::resetAmpClientSession() {
+    const size_t queuedBlocks = msgQueue.size();
+    const size_t pendingCommands = currentCommand.size();
+    const size_t pendingAcks = pendingLooperAcks.size();
+
+    while (!msgQueue.empty()) {
+        msgQueue.pop();
+    }
+    currentCommand.clear();
+    pendingLooperAcks.clear();
+    currentBTMsg.clear();
+    sparkSsr.clearMessageBuffer();
+    statusObject.resetLastMessageType();
+    statusObject.resetAcknowledgments();
+    statusObject.lastMessageNum() = 0x00;
+    customPresetNumberChangePending = false;
+
+    Serial.printf(
+        "BT_BLE_SESSION_RESET queued=%u commands=%u acks=%u\n",
+        (unsigned int)queuedBlocks, (unsigned int)pendingCommands,
+        (unsigned int)pendingAcks);
+}
+
 bool SparkDataControl::sendMessageToBT(ByteVector &msg) {
     DEBUG_PRINTLN("Sending message via BT.");
     return bleControl->writeBLE(msg, withDelay);

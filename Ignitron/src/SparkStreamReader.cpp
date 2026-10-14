@@ -1132,6 +1132,12 @@ unsigned int SparkStreamReader::readInt16() {
 void SparkStreamReader::clearMessageBuffer() {
     DEBUG_PRINTLN("Clearing response buffer.");
     response.clear();
+    message.clear();
+    unstructuredData.clear();
+    msgData.clear();
+    msgPos = 0;
+    msgLastBlock = false;
+    lastReadByte = 0x00;
 }
 
 ByteVector SparkStreamReader::convertDataTo8bit(ByteVector input) {

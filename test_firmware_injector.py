@@ -111,11 +111,12 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
     def test_bluetooth_reconnect_debug_and_graceful_restart_are_installed(self):
         bt_header = (TEMPLATE / "src/SparkBTControl.h").read_text(errors="replace")
         bt_source = (TEMPLATE / "src/SparkBTControl.cpp").read_text(errors="replace")
+        dual_source = (TEMPLATE / "src/SparkDualModeBridge.cpp").read_text(errors="replace")
         data_source = (TEMPLATE / "src/SparkDataControl.cpp").read_text(errors="replace")
         sketch = (TEMPLATE / "Ignitron.ino").read_text(errors="replace")
 
         self.assertIn("IPT_BT_RECONNECT_DIAGNOSTICS_V1", bt_header)
-        self.assertIn('btNameBle = "Spark 2 BLE"', bt_header)
+        self.assertIn('btNameBle = "Spark 40 BLE"', bt_header)
         self.assertIn("void prepareForRestart();", bt_header)
         self.assertIn("void printSerialDiagnostics();", bt_header)
         self.assertIn("BT_SPP OPEN", bt_source)
@@ -144,16 +145,34 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertIn("SparkDataControl::queueMessage(message)", bt_source)
         self.assertIn("esp_ble_gatts_send_indicate(", bt_source)
         self.assertIn("serialBleNotificationsEnabled", bt_source)
+        self.assertIn("BT_DUAL_INIT name=Spark 40 BLE service=FFC0 before_spp=1", dual_source)
+        self.assertIn("service->createCharacteristic", dual_source)
+        self.assertIn("notifyCharacteristic->addDescriptor(new BLE2902())", dual_source)
+        self.assertIn('sparkDualModeRestartAdvertising("spp_close")', bt_source)
+        self.assertIn('sparkDualModeRestartAdvertising("spp_close_delayed")', bt_source)
+        self.assertIn("server_->advertiseOnDisconnect(true)", bt_source)
+        self.assertIn("BT_BLE_SESSION_RESET", data_source)
+        self.assertIn("spark_dc_->resetAmpClientSession()", bt_source)
+        self.assertIn("BT_BLE CONNECT handle=", bt_source)
+        self.assertIn("BT_BLE DISCONNECT cleanup=complete advertising=auto", bt_source)
+        self.assertNotIn("Multi-connect support: start advertising", bt_source)
         start, end = IPT._cpp_function_span(
             bt_source, "void SparkBTControl::startBTSerial()")
         serial_start = bt_source[start:end]
         self.assertNotIn("startSerialBleBridge();", serial_start)
         self.assertNotIn("startServer();", serial_start)
+        self.assertIn(
+            "sparkDualModeStart(queueDualModeMessage, resetDualModeSession);",
+            serial_start)
+        self.assertIn("sessionCallback(true);", dual_source)
+        self.assertIn("sessionCallback(false);", dual_source)
         callback_start, callback_end = IPT._cpp_function_span(
             bt_source, "void SparkBTControl::serialCallback(")
         serial_callback = bt_source[callback_start:callback_end]
         self.assertIn("if (param->start.status == ESP_SPP_SUCCESS)", serial_callback)
-        self.assertIn("startSerialBleBridge();", serial_callback)
+        self.assertIn("resetDualModeSession(true);", serial_callback)
+        self.assertIn("resetDualModeSession(false);", serial_callback)
+        self.assertIn('sparkDualModeRestartAdvertising("spp_start")', serial_callback)
         self.assertIn("BT_SHUTDOWN complete", bt_source)
         self.assertIn("btSerial->disconnect()", bt_source)
         self.assertIn("btSerial->write(chunkData.data(), chunkData.size())", bt_source)
