@@ -198,7 +198,9 @@ private:
     NimBLEClient *client_ = nullptr;
 
     BluetoothSerial *btSerial = nullptr;
-    const string btNameBle = "Spark 40 BLE";      // Spark 40 BLE
+    // The current Spark app reliably discovers and reconnects to the Spark 2
+    // FFC0 GATT endpoint. Use that supported identity for pedal AMP-mode BLE.
+    const string btNameBle = "Spark 2 BLE";
     const string btNameSerial = "Spark 40 Audio"; // Spark 40 Audio
 
     bool isAmpConnected_ = false;

@@ -115,6 +115,7 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         sketch = (TEMPLATE / "Ignitron.ino").read_text(errors="replace")
 
         self.assertIn("IPT_BT_RECONNECT_DIAGNOSTICS_V1", bt_header)
+        self.assertIn('btNameBle = "Spark 2 BLE"', bt_header)
         self.assertIn("void prepareForRestart();", bt_header)
         self.assertIn("void printSerialDiagnostics();", bt_header)
         self.assertIn("BT_SPP OPEN", bt_source)
