@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ignitron Preset Tools v2.1.02 - desktop control center."""
+"""Ignitron Preset Tools v2.1.03 - desktop control center."""
 
 import contextlib
 import ast
@@ -38,7 +38,7 @@ _VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
-APP_VERSION = "2.1.02"
+APP_VERSION = "2.1.03"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
@@ -152,6 +152,8 @@ IPT_REQUIRED_FILES = (
     "src/SparkPresetBuilder.h",
     "src/SparkPresetControl.cpp",
     "src/SparkPresetControl.h",
+    "src/SparkBTControl.cpp",
+    "src/SparkBTControl.h",
 )
 IPT_ADDON_MARKERS = (
     ("Ignitron.ino", "SELECTPRESET serial command", "SELECTPRESET <bank> <preset>"),
@@ -166,6 +168,7 @@ IPT_ADDON_MARKERS = (
     ("Ignitron.ino", "Spark Capture disconnect failsafe", "OK CAPTUREKEEPALIVE"),
     ("Ignitron.ino", "Spark Capture APP-mode return", "OK CAPTUREEND RESTARTING"),
     ("src/SparkDataControl.cpp", "Spark Capture Bluetooth-mode restart continuity", "IPT_CAPTURE_BT_RESTART_V2"),
+    ("src/SparkBTControl.h", "Android Bluetooth reconnect diagnostics", "IPT_BT_RECONNECT_DIAGNOSTICS_V1"),
     ("src/SparkPresetControl.cpp", "Remote active preset event", "REMOTE_PRESET bank=%d preset=%d hwbank=%d"),
     ("src/SparkPresetControl.cpp", "Remote pending bank event", "REMOTE_BANK bank=%d hwbank=%d"),
     ("src/SparkPresetControl.cpp", "Spark Capture app preset stream", "received from app:"),
@@ -7823,7 +7826,7 @@ class PedalRemotePage(SerialPage):
         quick.pack(fill="x", padx=12, pady=(10, 8))
         tk.Label(quick, text="QUICK COMMANDS", bg=CARD, fg=GOLD,
                  font=("Segoe UI Semibold", 8)).pack(side="left", padx=(10, 8), pady=8)
-        for command in ("PING", "HWINFO", "FSINFO", "LISTFILES", "LOOPER STATUS"):
+        for command in ("PING", "HWINFO", "BTINFO", "FSINFO", "LISTFILES", "LOOPER STATUS"):
             ttk.Button(quick, text=command, style="Dark.TButton",
                        command=lambda value=command: self.send_remote_terminal_command(value)).pack(
                            side="left", padx=3, pady=5

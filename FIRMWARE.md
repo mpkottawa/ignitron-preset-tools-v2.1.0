@@ -1,12 +1,14 @@
-# Firmware included with IPT v2.1.02
+# Firmware included with IPT v2.1.03
 
-Every IPT v2.1.02 desktop package includes two complete PlatformIO projects. They are source projects that IPT builds for the connected pedal; no separate Arduino IDE setup is required.
+Every IPT v2.1.03 desktop package includes two complete PlatformIO projects. They are source projects that IPT builds for the connected pedal; no separate Arduino IDE setup is required.
 
 ## Which folder should I use?
 
 ### `ignitron firmware` (native packages) or `Ignitron` (source release)
 
-This is the ready-to-build IPT v2.1.02 firmware and the normal choice for this release. It includes the serial protocol used by Pedal Remote and Spark Capture, software-controlled capture mode, the multi-amp blocklist, Spark 2 battery support, the dedicated-preset-LED flicker fix, the prepared preset library, and all current fixes.
+This is the ready-to-build IPT v2.1.03 firmware and the normal choice for this release. It includes the serial protocol used by Pedal Remote and Spark Capture, Android Spark-app reconnect support, software-controlled capture mode, the multi-amp blocklist, Spark 2 battery support, the dedicated-preset-LED flicker fix, the prepared preset library, and all current fixes.
+
+For Android reconnects, the pedal now exposes the Spark-compatible Classic Bluetooth audio/control profile alongside serial data, reconnects one saved phone bond after restart, restores discoverability after a disconnect, and clears stale serial-session state. Automatic boot reconnect is intentionally skipped when multiple phones are bonded; select the intended phone manually in that case.
 
 The release default is the SH1106 1.3-inch OLED. Before flashing, review the Firmware and Hardware tabs if your pedal uses a different display, GPIO mapping, or battery wiring. **Build + Flash FW + FS** saves and verifies the values shown in IPT before compiling.
 

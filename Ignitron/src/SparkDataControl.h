@@ -53,6 +53,9 @@ public:
                                         uint8_t *pData, size_t length, bool isNotify);
 
     static void queueMessage(ByteVector &blk);
+    // Clear transient phone-session protocol state without changing presets,
+    // the selected Bluetooth mode, or the current AMP mode.
+    void resetAmpClientSession();
     // methods to process any data from Spark (process with SparkStreamReader and send ack if required)
     static void processSparkData(ByteVector &blk);
 
@@ -167,6 +170,7 @@ public:
     void resetLastKeyboardButtonPressed();
 
     void restartESP(bool resetSparkMode = false);
+    void printBluetoothDiagnostics();
     bool blockCurrentAmp();
     bool clearBlockedAmp();
     bool enterBlocklistMenu();
@@ -232,6 +236,7 @@ private:
     static OperationMode sparkModeAmp;
     static OperationMode sparkModeApp;
     ByteVector currentBTMsg;
+    bool serialClientWasConnected_ = false;
     static AmpType sparkAmpType;
     static string sparkAmpName;
     static bool withDelay;

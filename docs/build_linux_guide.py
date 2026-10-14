@@ -43,10 +43,10 @@ def link(text,url):return f'<a href="{url}" color="#176d92">{text}</a>'
 repo='https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0'
 
 title(1,'Install from one Linux download')
-p('<b>Guide revision 0.6 - 12 October 2026.</b> Recommended setup for <b>IPT v2.1.02</b> on Fedora with dnf or Ubuntu/Debian with apt. Atomic/immutable editions and other distributions need a separate setup method.')
+p('<b>Guide revision 0.7 - 13 October 2026.</b> Recommended setup for <b>IPT v2.1.03</b> on Fedora with dnf or Ubuntu/Debian with apt. Atomic/immutable editions and other distributions need a separate setup method.')
 note('Keep the pedal unplugged and close IPT. For an existing test PC, back up and reset its profile using page 8 first. Your music stays in its existing local or NAS folder.')
 h('A. Download and extract')
-p('Open '+link('the v2.1.02 release',repo+'/releases/tag/v2.1.02')+'. Download <b>Linux-x64.tar.gz</b> for a typical Intel/AMD PC, or <b>Linux-arm64.tar.gz</b> for an ARM64 computer. Right-click the download and choose <b>Extract</b>. Open the extracted folder, not the archive viewer. Use the Linux download containing <b>Install Ignitron.desktop</b>.')
+p('Open '+link('the v2.1.03 release',repo+'/releases/tag/v2.1.03')+'. Download <b>Linux-x64.tar.gz</b> for a typical Intel/AMD PC, or <b>Linux-arm64.tar.gz</b> for an ARM64 computer. Right-click the download and choose <b>Extract</b>. Open the extracted folder, not the archive viewer. Use the Linux download containing <b>Install Ignitron.desktop</b>.')
 h('B. Double-click Install Ignitron')
 p('Open <b>Install Ignitron</b>. If Linux asks, choose <b>Execute</b>, <b>Trust</b> or <b>Allow Launching</b>. Some desktops require right-click > Properties > Permissions > executable first. A terminal setup window opens. Enter your Linux password when asked; characters stay hidden. Run as your normal user, never with sudo before the installer.')
 h('C. Wait for SETUP COMPLETE')
@@ -89,12 +89,12 @@ p(link('PlatformIO Core installer','https://docs.platformio.org/en/latest/core/i
 
 title(4,'Download and install the release')
 h('5. Download the updated archive and checksums')
-p('Open '+link('the v2.1.02 release',repo+'/releases/tag/v2.1.02')+' and confirm the version is <b>v2.1.02</b>. Avoid an earlier saved ZIP or GitHub Actions artifact. The commands below fetch the public release into a new folder.')
-code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\nipt_download=$(mktemp -d "$PWD/ipt-2.1.02-download.XXXXXX")\ncd "$ipt_download"\nrelease_url="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0"\nrelease_url="$release_url/releases/download/v2.1.02"\narchive="Ignitron.Preset.Tools.v2.1.02.Linux-x64.tar.gz"\ncurl -fL -o "$archive" "$release_url/$archive"\ncurl -fL -o SHA256SUMS.txt "$release_url/SHA256SUMS.txt"\nsha256sum --ignore-missing -c SHA256SUMS.txt')
+p('Open '+link('the v2.1.03 release',repo+'/releases/tag/v2.1.03')+' and confirm the version is <b>v2.1.03</b>. Avoid an earlier saved ZIP or GitHub Actions artifact. The commands below fetch the public release into a new folder.')
+code('mkdir -p "$HOME/Downloads"\ncd "$HOME/Downloads"\nipt_download=$(mktemp -d "$PWD/ipt-2.1.03-download.XXXXXX")\ncd "$ipt_download"\nrelease_url="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0"\nrelease_url="$release_url/releases/download/v2.1.03"\narchive="Ignitron.Preset.Tools.v2.1.03.Linux-x64.tar.gz"\ncurl -fL -o "$archive" "$release_url/$archive"\ncurl -fL -o SHA256SUMS.txt "$release_url/SHA256SUMS.txt"\nsha256sum --ignore-missing -c SHA256SUMS.txt')
 p('For ARM64, change <b>Linux-x64</b> to <b>Linux-arm64</b> in the archive assignment and extracted directory below. Keep using this same terminal so the variables remain set.')
 note('<b>Checkpoint:</b> the downloaded archive must report OK. If verification fails or checks no file, stop and download both files again. The release uses dots in download filenames; the extracted folder uses spaces.')
 h('6. Extract and install without sudo')
-code('tar -xzf "$archive"\ncd "Ignitron Preset Tools v2.1.02 Linux-x64"\nsh ./install_linux.sh')
+code('tar -xzf "$archive"\ncd "Ignitron Preset Tools v2.1.03 Linux-x64"\nsh ./install_linux.sh')
 p('Expected: <b>Installed Ignitron Preset Tools for this user.</b> The app appears in the menu, typically under Multimedia. Default location: ~/.local/share/ignitron-preset-tools. The launcher is ~/.local/bin/ignitron-preset-tools. A custom XDG_DATA_HOME changes the data location.')
 h('7. Check VLC, then launch IPT')
 code('"$HOME/.local/bin/ignitron-preset-tools" --vlc-self-test\n"$HOME/.local/bin/ignitron-preset-tools" --vlc-audio-self-test')
@@ -170,19 +170,19 @@ for text in [
 '10. Listed/full-library backups contain readable JSON and report completion.',
 '11. Builder export and optional NAS/favorites work; restart retains settings.'
 ]:p('[  ] '+text)
-h('Upgrade and uninstall behavior in v2.1.02')
-p('Installing again updates the application and bundled templates while preserving working firmware projects, presets, captures and backups. The uninstaller removes the app but retains working data and settings. Its <b>--purge</b> option deliberately deletes working data as well, so it is not the preferred clean-test procedure. Old extracted installers/uninstallers may still be destructive; use the v2.1.02 package.')
+h('Upgrade and uninstall behavior in v2.1.03')
+p('Installing again updates the application and bundled templates while preserving working firmware projects, presets, captures and backups. The uninstaller removes the app but retains working data and settings. Its <b>--purge</b> option deliberately deletes working data as well, so it is not the preferred clean-test procedure. Old extracted installers/uninstallers may still be destructive; use the v2.1.03 package.')
 h('Recovery after the clean test')
 p('Close IPT. Keep the newly tested data/profile under a different backup name, then restore the original-app-data and original-settings folders from page 8 to their previous locations. Restore original-platformio only if you need the previous toolchain/cache. Never merge folders over one another without reviewing conflicts. This is not needed for a successful first installation.')
 h('Validation scope')
-p('Earlier Fedora 44 x64 testing confirmed flashing, real backing-track playback, NAS library access, Remote operations and phone preset capture. The v2.1.02 release also has automated regressions and native CI packaging. Hardware-specific features such as Spark 2 looper/battery telemetry and optional dedicated preset LEDs require the corresponding hardware. A passing software test cannot certify every Linux distribution, USB adapter or pedal.')
+p('Earlier Fedora 44 x64 testing confirmed flashing, real backing-track playback, NAS library access, Remote operations and phone preset capture. The v2.1.03 release also has automated regressions and native CI packaging. Hardware-specific features such as Spark 2 looper/battery telemetry and optional dedicated preset LEDs require the corresponding hardware. A passing software test cannot certify every Linux distribution, USB adapter or pedal.')
 p('Record pass/fail against this exact revised guide. Keep any failures open until the downloaded release passes the same action on this PC. Update the guide when the steps or behavior change.')
-p(link('Release and checksums',repo+'/releases/tag/v2.1.02')+' | '+link('Report or review issues',repo+'/issues'))
+p(link('Release and checksums',repo+'/releases/tag/v2.1.03')+' | '+link('Report or review issues',repo+'/issues'))
 
 def footer(c,doc):
     c.setStrokeColor(colors.HexColor('#e2e7ec'));c.line(42,40,570,40)
     c.setFont('Guide',8);c.setFillColor(colors.HexColor('#637083'))
-    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.6  |  12 Oct 2026')
+    c.drawString(42,27,'IGNITRON PRESET TOOLS  |  Guide 0.7  |  13 Oct 2026')
     c.drawRightString(570,27,str(doc.page))
 doc=SimpleDocTemplate(str(OUT),pagesize=(612,792),rightMargin=42,leftMargin=42,topMargin=38,bottomMargin=54,title='Ignitron Preset Tools - Linux Installation Guide',author='Ignitron Preset Tools')
 doc.build(story,onFirstPage=footer,onLaterPages=footer)

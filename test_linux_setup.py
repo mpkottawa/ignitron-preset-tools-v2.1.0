@@ -92,7 +92,7 @@ class LinuxSetupTests(unittest.TestCase):
         source = source.replace('/run/ostree-booted', shlex.quote(str(self.root / 'ostree')))
         source = source.replace('/etc/udev/rules.d/99-platformio-udev.rules', shlex.quote(str(self.rules)))
         self.script.write_text(source)
-        self.package = self.root / 'Ignitron Preset Tools v2.1.02 Linux-x64'
+        self.package = self.root / 'Ignitron Preset Tools v2.1.03 Linux-x64'
         (self.package / 'app').mkdir(parents=True)
         shutil.copy2(self.tool, self.package / 'app/ignitron-preset-tools')
         (self.package / 'install_linux.sh').write_text((ROOT / 'install_linux.sh').read_text().replace('${HOME}', '${IPT_TEST_HOME}').replace('$HOME', '${IPT_TEST_HOME}'))
@@ -102,7 +102,7 @@ class LinuxSetupTests(unittest.TestCase):
         self.repack()
         self.config_file = self.root / 'fixture.json'
         self.config = {'trace': str(self.root / 'trace'), 'rules': str(self.rules),
-                       'archive': str(self.archive), 'archive_name': 'Ignitron.Preset.Tools.v2.1.02.Linux-x64.tar.gz',
+                       'archive': str(self.archive), 'archive_name': 'Ignitron.Preset.Tools.v2.1.03.Linux-x64.tar.gz',
                        'sha256': hashlib.sha256(self.archive.read_bytes()).hexdigest(),
                        'pio': str(self.home / '.platformio/penv/bin/platformio'), 'tool': str(self.tool)}
         self.env = {**os.environ, 'IPT_TEST_HOME': str(self.home), 'IPT_SETUP_FIXTURE': str(self.config_file),
@@ -126,7 +126,7 @@ class LinuxSetupTests(unittest.TestCase):
     def bundle(self, arch='x64'):
         for name in ('launch_linux_setup.sh', 'START-HERE-Linux.txt'):
             shutil.copy2(ROOT / name, self.root / name)
-        stage_linux_setup(self.root, self.package, '2.1.02', arch)
+        stage_linux_setup(self.root, self.package, '2.1.03', arch)
         self.script = self.package / 'setup_linux.sh'
 
     def test_bundled_setup_needs_no_app_download_and_leaves_extraction_pristine(self):
@@ -144,7 +144,7 @@ class LinuxSetupTests(unittest.TestCase):
     def test_wrong_arch_incomplete_and_corrupt_bundles_stop_before_sudo(self):
         self.bundle(arch='arm64')
         self.assert_stopped(self.run_setup())
-        (self.package / 'linux-package.txt').write_text('2.1.02 x64\n')
+        (self.package / 'linux-package.txt').write_text('2.1.03 x64\n')
         self.assert_stopped(self.run_setup())  # changed metadata fails manifest
         (self.package / 'linux-package.txt').unlink()
         self.assert_stopped(self.run_setup())

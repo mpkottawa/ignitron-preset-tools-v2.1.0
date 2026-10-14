@@ -68,9 +68,7 @@ public:
      *
      * @return TRUE if connected
      */
-    const bool isAppConnected() const {
-        return isAppConnectedBLE_ || isAppConnectedSerial_;
-    }
+    const bool isAppConnected() const;
     /**
      * @brief  Initiates connection to the Spark Amp
      *
@@ -165,6 +163,11 @@ public:
 
     void startBTSerial();
     void stopBTSerial();
+    // IPT_BT_RECONNECT_DIAGNOSTICS_V1
+    // Emit Bluetooth Classic state over USB and close SPP cleanly before a
+    // software restart so Android does not retain a stale session.
+    void printSerialDiagnostics();
+    void prepareForRestart();
 
     bool byteAvailable() {
         if (btSerial != NULL) {
@@ -195,7 +198,7 @@ private:
     NimBLEClient *client_ = nullptr;
 
     BluetoothSerial *btSerial = nullptr;
-    const string btNameBle = "Spark 40 BLE";      // Spark 40 BLE
+    const string btNameBle = "Spark 40 BLE";
     const string btNameSerial = "Spark 40 Audio"; // Spark 40 Audio
 
     bool isAmpConnected_ = false;
@@ -203,6 +206,7 @@ private:
     // isClientConnected will be set when a client is connected to ESP in AMP mode
     bool isAppConnectedBLE_ = false;
     static bool isAppConnectedSerial_;
+    static string serialPeerAddress_;
     notify_callback notifyCB_;
 
     const uint32_t kScanTime = 0; /** 0 = scan forever */

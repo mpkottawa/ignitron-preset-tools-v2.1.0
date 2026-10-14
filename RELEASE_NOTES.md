@@ -1,6 +1,16 @@
-# Ignitron Preset Tools v2.1.02
+# Ignitron Preset Tools v2.1.03
 
-## Dedicated preset LED stability fix - 2026-10-12
+## Android Spark-app reconnect fix - 2026-10-13
+
+- Added the Spark-compatible Classic Bluetooth audio/control records used by the current Android Spark app while preserving the pedal's serial data channel.
+- Reconnects the single saved bonded phone after a pedal restart; multiple stored phone bonds remain a deliberate manual-selection case.
+- Restores Bluetooth discoverability after disconnects, clears transient Spark serial-session state, and performs orderly Bluetooth cleanup before firmware-triggered restarts.
+- Added focused regression coverage for the Bluetooth profile, one-bond reconnect guard, disconnect reset, and restart cleanup paths.
+- Updated the application, bundled current firmware, native packages, installers, documentation, and release workflow to v2.1.03.
+
+Physical validation used an ESP32 Ignitron pedal and Samsung Android phone. After pairing once, the Spark app connected after a pedal reboot and reconnected again after force-closing the app, waiting 10 seconds, and reopening it. No saved-device deletion, second pairing confirmation, or pedal input was required.
+
+## v2.1.02 dedicated preset LED stability fix - 2026-10-12
 
 - Fixed visible flicker on the separate FX/letter LEDs when `DEDICATED_PRESET_LEDS` is enabled. Preset mode now updates only the four dedicated preset outputs before applying FX states, instead of clearing every LED on every loop.
 - Preserved the existing LED behavior for standard pedals without dedicated preset LEDs.

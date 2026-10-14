@@ -1,10 +1,14 @@
-# Ignitron Preset Tools v2.1.02
+# Ignitron Preset Tools v2.1.03
 
-## Dedicated preset LED stability fix - 2026-10-12
+## Android Spark-app reconnect fix - 2026-10-13
 
-This maintenance release fixes the dedicated-preset-LED flicker reported in [issue #9](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/issues/9). In normal Preset mode, dedicated preset LEDs are now updated without briefly clearing and reasserting the separate FX outputs on every firmware loop. Standard pedals without `DEDICATED_PRESET_LEDS` retain their existing LED behavior.
+This maintenance release fixes the Android reconnect failure reported in [issue #11](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/issues/11). After the phone has paired once, the current firmware now exposes the Spark-compatible Classic Bluetooth audio/control profile expected by the Spark app, reconnects a single saved phone bond after a pedal restart, restores discoverability after disconnects, and clears stale serial-session state. Bluetooth cleanup also completes before firmware-triggered restarts.
 
-The application, five native packages, Linux all-in-one installer, and bundled current firmware are labelled **2.1.02**. Releases v2.1.00 and v2.1.01 remain available. Download the archive for your platform and the v2.1.02 `SHA256SUMS.txt` together.
+The fix was verified on a physical ESP32 Ignitron pedal and Samsung Android phone: the first Spark app launch connected after the pedal reboot, and a force-close plus 10-second wait reconnected on the second launch without deleting the saved device, accepting another pairing prompt, or pressing a pedal switch. Automatic boot reconnect intentionally runs only when exactly one phone bond is stored; choose the intended phone manually when multiple phones are bonded.
+
+The application, five native packages, Linux all-in-one installer, and bundled current firmware are labelled **2.1.03**. Releases v2.1.00 through v2.1.02 remain available. Download the archive for your platform and the v2.1.03 `SHA256SUMS.txt` together.
+
+This release carries forward the v2.1.02 dedicated-preset-LED stability fix and every v2.1.01 Linux, USB, capture, backup, installer, and VLC improvement.
 
 - Fixed Linux VLC discovery and a PipeWire crash when changing volume before playback. Added a real-audio-backend self-test.
 - Added KDE Places folder selection, remembered music locations, and SMB access through the desktop credential/mount services.
@@ -16,9 +20,9 @@ The application, five native packages, Linux all-in-one installer, and bundled c
 - Both firmware and filesystem must build before an optional erase. Builder exports back up replaced preset JSON and reject ambiguous selected filenames.
 - Added the revised **Linux-Install-Guide.pdf**, also available as a separate release download. Published filenames and checksum entries now match.
 
-Close IPT before installing. The dedicated-LED correction has automated source coverage but still requires confirmation on a pedal fitted with the optional dedicated preset LEDs.
+Close IPT before installing. The Android reconnect correction has automated coverage and physical phone/pedal validation. The carried-forward dedicated-LED correction still requires confirmation on a pedal fitted with the optional dedicated preset LEDs.
 
-IPT v2.1.02 is the desktop control center for building Ignitron preset banks, installing IPT firmware support, flashing firmware/filesystem data, controlling presets over USB, backing up a pedal, capturing presets from the Spark app, and playing backing tracks.
+IPT v2.1.03 is the desktop control center for building Ignitron preset banks, installing IPT firmware support, flashing firmware/filesystem data, controlling presets over USB, backing up a pedal, capturing presets from the Spark app, and playing backing tracks.
 
 ## Native downloads
 
@@ -32,19 +36,19 @@ Keep the pedal unplugged during setup. The included all-in-one installer verifie
 
 If the launcher opens as text, use **Open Terminal Here** inside the extracted folder and run `bash ./launch_linux_setup.sh`. Some desktops require marking the launcher executable or trusted first. See **START-HERE-Linux.txt** and the bundled **Linux-Install-Guide.pdf**.
 
-Both Linux archives contain the installer, launcher, revised guide, and v2.1.02 application and firmware payloads. Use the v2.1.02 **SHA256SUMS.txt**.
+Both Linux archives contain the installer, launcher, revised guide, and v2.1.03 application and firmware payloads. Use the v2.1.03 **SHA256SUMS.txt**.
 
-The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.02/Install-IPT-Linux.sh) remains available: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"` for online setup.
+The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.03/Install-IPT-Linux.sh) remains available: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"` for online setup.
 
 ### Individual platform packages
 
 Choose the archive matching the operating system and CPU:
 
-- `Ignitron.Preset.Tools.v2.1.02.Windows-x64.zip`
-- `Ignitron.Preset.Tools.v2.1.02.macOS-arm64.zip` for Apple Silicon
-- `Ignitron.Preset.Tools.v2.1.02.macOS-x64.zip` for Intel Macs
-- `Ignitron.Preset.Tools.v2.1.02.Linux-x64.tar.gz`
-- `Ignitron.Preset.Tools.v2.1.02.Linux-arm64.tar.gz`
+- `Ignitron.Preset.Tools.v2.1.03.Windows-x64.zip`
+- `Ignitron.Preset.Tools.v2.1.03.macOS-arm64.zip` for Apple Silicon
+- `Ignitron.Preset.Tools.v2.1.03.macOS-x64.zip` for Intel Macs
+- `Ignitron.Preset.Tools.v2.1.03.Linux-x64.tar.gz`
+- `Ignitron.Preset.Tools.v2.1.03.Linux-arm64.tar.gz`
 
 Windows users extract the ZIP and run the EXE. Mac users extract the ZIP and move the app to Applications. Linux users use **Install Ignitron** inside the extracted folder. The `install_linux.sh` script remains an app-only/manual alternative after separately installing prerequisites.
 
@@ -52,7 +56,7 @@ The release workflow builds each application natively. It does not relabel a Win
 
 ## Included firmware
 
-- `ignitron firmware` is the ready-to-build IPT v2.1.02 project with the current feature set and prepared preset library.
+- `ignitron firmware` is the ready-to-build IPT v2.1.03 project with Android reconnect support, the current feature set, and the prepared preset library.
 - `Ignitron 1.9.0` is included separately as the earlier fallback firmware.
 
 The current project defaults to the SH1106 1.3-inch OLED. Review OLED, battery, and GPIO settings before flashing hardware that differs from that profile. See `FIRMWARE.md` in the download for the short setup and recovery guide.

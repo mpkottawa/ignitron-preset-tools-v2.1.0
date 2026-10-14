@@ -108,6 +108,71 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertRegex(config, r"(?m)^#define OLED_DRIVER_SH1106\s*$")
         self.assertNotRegex(config, r"(?m)^#define OLED_DRIVER_SSD1306\s*$")
 
+    def test_bluetooth_reconnect_debug_and_graceful_restart_are_installed(self):
+        bt_header = (TEMPLATE / "src/SparkBTControl.h").read_text(errors="replace")
+        bt_source = (TEMPLATE / "src/SparkBTControl.cpp").read_text(errors="replace")
+        data_source = (TEMPLATE / "src/SparkDataControl.cpp").read_text(errors="replace")
+        sketch = (TEMPLATE / "Ignitron.ino").read_text(errors="replace")
+
+        self.assertIn("IPT_BT_RECONNECT_DIAGNOSTICS_V1", bt_header)
+        self.assertIn('btNameBle = "Spark 40 BLE"', bt_header)
+        self.assertIn("void prepareForRestart();", bt_header)
+        self.assertIn("void printSerialDiagnostics();", bt_header)
+        self.assertIn("BT_SPP OPEN", bt_source)
+        self.assertIn("BT_SPP CLOSE", bt_source)
+        self.assertIn("restoreSerialDiscoverability", bt_source)
+        self.assertIn("BT_SCANMODE reason=%s status=%d", bt_source)
+        self.assertIn('restoreSerialDiscoverability("client_close")', bt_source)
+        self.assertIn("delayedSerialDiscoverabilityRestore", bt_source)
+        self.assertIn('restoreSerialDiscoverability("client_close_delayed")', bt_source)
+        self.assertIn("scheduleSerialDiscoverabilityRestore();", bt_source)
+        self.assertIn("BT_AUTH success=", bt_source)
+        self.assertIn("BT_BONDS count=", bt_source)
+        self.assertIn("configureSparkAudioClassOfDevice", bt_source)
+        self.assertIn("ESP_BT_COD_MAJOR_DEV_AV", bt_source)
+        self.assertIn("ESP_BT_COD_SRVC_AUDIO | ESP_BT_COD_SRVC_RENDERING", bt_source)
+        self.assertIn("esp_bt_gap_set_cod(requested, ESP_BT_INIT_COD)", bt_source)
+        self.assertIn("BT_COD set=%d get=%d value=0x%06lX", bt_source)
+        self.assertIn("server_->advertiseOnDisconnect(true)", bt_source)
+        self.assertIn("BT_AMP_SESSION_RESET", data_source)
+        self.assertIn("serialSessionDataControl->resetAmpClientSession()", bt_source)
+        self.assertIn("BT_SERIAL_SESSION connected=", bt_source)
+        self.assertIn("BT_BLE CONNECT handle=", bt_source)
+        self.assertIn("BT_BLE DISCONNECT cleanup=complete advertising=auto", bt_source)
+        self.assertNotIn("Multi-connect support: start advertising", bt_source)
+        start, end = IPT._cpp_function_span(
+            bt_source, "void SparkBTControl::startBTSerial()")
+        serial_start = bt_source[start:end]
+        self.assertNotIn("startSerialBleBridge();", serial_start)
+        self.assertNotIn("startServer();", serial_start)
+        self.assertNotIn(
+            "sparkDualModeStart(queueDualModeMessage, resetDualModeSession);",
+            serial_start)
+        self.assertIn("serialSessionDataControl = spark_dc_;", serial_start)
+        self.assertIn("esp_a2d_sink_init()", bt_source)
+        self.assertIn("esp_avrc_ct_init()", bt_source)
+        self.assertIn("esp_avrc_tg_init()", bt_source)
+        self.assertIn("BT_A2DP CONNECTION state=", bt_source)
+        self.assertIn("startSerialAudioProfile();", bt_source)
+        self.assertIn("esp_a2d_sink_connect(bondedDevice)", bt_source)
+        self.assertIn("scheduleSerialAudioReconnect();", bt_source)
+        self.assertIn("bondedCount != 1", bt_source)
+        callback_start, callback_end = IPT._cpp_function_span(
+            bt_source, "void SparkBTControl::serialCallback(")
+        serial_callback = bt_source[callback_start:callback_end]
+        self.assertIn("if (param->start.status == ESP_SPP_SUCCESS)", serial_callback)
+        self.assertIn("resetSerialSession(true);", serial_callback)
+        self.assertIn("resetSerialSession(false);", serial_callback)
+        self.assertIn('restoreSerialDiscoverability("spp_start")', serial_callback)
+        self.assertIn('restoreSerialDiscoverability("auth_complete")', bt_source)
+        self.assertIn("BT_SHUTDOWN complete", bt_source)
+        self.assertIn("btSerial->disconnect()", bt_source)
+        self.assertIn("btSerial->write(chunkData.data(), chunkData.size())", bt_source)
+        self.assertIn("bleControl->prepareForRestart()", data_source)
+        self.assertIn("BT_RX_RESET discarded=", data_source)
+        self.assertIn('u == "BTINFO"', sketch)
+        self.assertNotIn("ESP.restart();", sketch)
+
     def test_dedicated_preset_led_update_does_not_pulse_fx_outputs(self):
         led_source = (TEMPLATE / "src/SparkLEDControl.cpp").read_text(errors="replace")
         start, end = IPT._cpp_function_span(
@@ -1388,19 +1453,19 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
     def test_public_release_versions_agree(self):
-        self.assertEqual("2.1.02", IPT.APP_VERSION)
+        self.assertEqual("2.1.03", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
         for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
-            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.02"')
-        self.assertIn('VERSION = "2.1.02"', (root / "Ignitron/src/Config_Definitions.h").read_text())
-        self.assertIn('Name=Ignitron Preset Tools 2.1.02', (root / "install_linux.sh").read_text())
-        self.assertIn('RELEASE_VERSION="2.1.02"', (root / "setup_linux.sh").read_text())
-        self.assertIn('# Ignitron Preset Tools 2.1.02', (root / "README.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "GITHUB_RELEASE.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "RELEASE_NOTES.md").read_text())
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.03"')
+        self.assertIn('VERSION = "2.1.03"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.03', (root / "install_linux.sh").read_text())
+        self.assertIn('RELEASE_VERSION="2.1.03"', (root / "setup_linux.sh").read_text())
+        self.assertIn('# Ignitron Preset Tools 2.1.03', (root / "README.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "GITHUB_RELEASE.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "RELEASE_NOTES.md").read_text())
         workflow = (root / ".github/workflows/build-release.yml").read_text()
         for platform in ("Windows", "Linux", "macOS"):
-            self.assertIn(f"Ignitron-Preset-Tools-v2.1.02-{platform}", workflow)
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.03-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")
