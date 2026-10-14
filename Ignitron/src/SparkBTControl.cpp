@@ -96,7 +96,7 @@ esp_gatts_attr_db_t serialBleAttributeTable[SERIAL_BLE_ATTRIBUTE_COUNT] = {
 };
 
 esp_ble_adv_data_t serialBleAdvertisingData = {
-    false, true, true, 0x0006, 0x0010, 0, 0, nullptr, 0, nullptr,
+    false, true, false, 0, 0, 0, 0, nullptr, 0, nullptr,
     sizeof(serialBleAdvertisedServiceUuid), serialBleAdvertisedServiceUuid,
     ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_DMT_CONTROLLER_SPT |
         ESP_BLE_ADV_FLAG_DMT_HOST_SPT};
@@ -204,7 +204,11 @@ void startSerialBleBridge() {
     // A real Spark exposes the FFC0 control service during discovery. Keep the
     // proven Classic SPP transport active, while adding the same BLE endpoint
     // through Bluedroid, the host BluetoothSerial already initialized.
-    Serial.println("BT_BLE_BRIDGE starting service=FFC0");
+    if (serialBleRegistered) {
+        maybeStartSerialBleAdvertising();
+        return;
+    }
+    Serial.println("BT_BLE_BRIDGE starting service=FFC0 payload=23/31");
     serialBleAdvertisingDataReady = false;
     serialBleServiceReady = false;
     serialBleAdvertising = false;
@@ -1022,6 +1026,13 @@ void SparkBTControl::serialCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t
         Serial.printf("BT_SPP START status=%d scn=%u handle=%u\n",
                       (int)param->start.status, (unsigned int)param->start.scn,
                       (unsigned int)param->start.handle);
+        if (param->start.status == ESP_SPP_SUCCESS) {
+            // BluetoothSerial::begin() returns before the asynchronous SPP
+            // server-start event. Register GATT only after Bluedroid has
+            // completed that initialization so the FFC0 companion advert is
+            // reliably available for the Spark app's reconnect scan.
+            startSerialBleBridge();
+        }
     } else if (event == ESP_SPP_SRV_OPEN_EVT) {
         serialClientConnectedForDiscovery = true;
         serialPeerAddress_ = formatBtAddress(param->srv_open.rem_bda);
@@ -1072,7 +1083,6 @@ void SparkBTControl::startBTSerial() {
         Serial.printf("Started BT Serial with name %s \n",
                       btNameSerial.c_str());
         configureSparkAudioClassOfDevice();
-        startSerialBleBridge();
         btSerial->flush();
         printSerialDiagnostics();
     } else {
