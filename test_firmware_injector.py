@@ -1453,19 +1453,19 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
     def test_public_release_versions_agree(self):
-        self.assertEqual("2.1.02", IPT.APP_VERSION)
+        self.assertEqual("2.1.03", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
         for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
-            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.02"')
-        self.assertIn('VERSION = "2.1.02"', (root / "Ignitron/src/Config_Definitions.h").read_text())
-        self.assertIn('Name=Ignitron Preset Tools 2.1.02', (root / "install_linux.sh").read_text())
-        self.assertIn('RELEASE_VERSION="2.1.02"', (root / "setup_linux.sh").read_text())
-        self.assertIn('# Ignitron Preset Tools 2.1.02', (root / "README.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "GITHUB_RELEASE.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.02', (root / "RELEASE_NOTES.md").read_text())
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.03"')
+        self.assertIn('VERSION = "2.1.03"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.03', (root / "install_linux.sh").read_text())
+        self.assertIn('RELEASE_VERSION="2.1.03"', (root / "setup_linux.sh").read_text())
+        self.assertIn('# Ignitron Preset Tools 2.1.03', (root / "README.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "GITHUB_RELEASE.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "RELEASE_NOTES.md").read_text())
         workflow = (root / ".github/workflows/build-release.yml").read_text()
         for platform in ("Windows", "Linux", "macOS"):
-            self.assertIn(f"Ignitron-Preset-Tools-v2.1.02-{platform}", workflow)
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.03-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")

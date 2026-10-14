@@ -60,7 +60,7 @@ jobs:
         run: ./build_release.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.02-Windows-x64
+          name: Ignitron-Preset-Tools-v2.1.03-Windows-x64
           path: release/*Windows-x64.zip
           if-no-files-found: error
 
@@ -88,7 +88,7 @@ jobs:
           ./build_release_mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.02-macOS-${{ matrix.arch }}
+          name: Ignitron-Preset-Tools-v2.1.03-macOS-${{ matrix.arch }}
           path: release/*macOS-${{ matrix.arch }}.zip
           if-no-files-found: error
 
@@ -127,7 +127,7 @@ jobs:
           "$package_dir/app/ignitron-preset-tools" --vlc-self-test
       - uses: actions/upload-artifact@v4
         with:
-          name: Ignitron-Preset-Tools-v2.1.02-Linux-${{ matrix.arch }}
+          name: Ignitron-Preset-Tools-v2.1.03-Linux-${{ matrix.arch }}
           path: release/*Linux-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
@@ -158,8 +158,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          if [[ "$RELEASE_TAG" != "v2.1.02" ]]; then
-            echo "Release tag $RELEASE_TAG does not match packaged version v2.1.02" >&2
+          if [[ "$RELEASE_TAG" != "v2.1.03" ]]; then
+            echo "Release tag $RELEASE_TAG does not match packaged version v2.1.03" >&2
             exit 1
           fi
           for package in artifacts/*; do
