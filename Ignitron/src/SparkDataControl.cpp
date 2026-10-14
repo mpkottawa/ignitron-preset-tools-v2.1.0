@@ -1256,7 +1256,7 @@ void SparkDataControl::resetAmpClientSession() {
     customPresetNumberChangePending = false;
 
     Serial.printf(
-        "BT_BLE_SESSION_RESET queued=%u commands=%u acks=%u\n",
+        "BT_AMP_SESSION_RESET queued=%u commands=%u acks=%u\n",
         (unsigned int)queuedBlocks, (unsigned int)pendingCommands,
         (unsigned int)pendingAcks);
 }
