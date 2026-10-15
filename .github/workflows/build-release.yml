@@ -58,10 +58,33 @@ jobs:
       - name: Build Windows package
         shell: pwsh
         run: ./build_release.ps1
+      - name: Verify Windows installer
+        shell: pwsh
+        run: |
+          $setup = @(Get-ChildItem -LiteralPath release -Filter "*Windows-x64-Setup.exe")
+          if ($setup.Count -ne 1) { throw "Expected one Windows Setup executable; found $($setup.Count)." }
+          $installDir = Join-Path $env:RUNNER_TEMP "ipt-installer-smoke"
+          & $setup[0].FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Setup exited with code $LASTEXITCODE." }
+          $apps = @(Get-ChildItem -LiteralPath $installDir -Filter "Ignitron Preset Tools v*.exe" -File)
+          if ($apps.Count -ne 1) { throw "Expected one installed IPT executable; found $($apps.Count)." }
+          $app = $apps[0].FullName
+          $programmingSetup = Join-Path $installDir "windows_programming_setup.ps1"
+          $firmware = Join-Path $installDir "ignitron firmware\platformio.ini"
+          foreach ($required in @($app, $programmingSetup, $firmware)) {
+            if (-not (Test-Path -LiteralPath $required)) { throw "Installer omitted $required" }
+          }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $programmingSetup -SelfTest -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw "Installed programming setup self-test failed." }
+          $uninstaller = Join-Path $installDir "unins000.exe"
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with code $LASTEXITCODE." }
       - uses: actions/upload-artifact@v4
         with:
           name: Ignitron-Preset-Tools-v2.1.03-Windows-x64
-          path: release/*Windows-x64.zip
+          path: |
+            release/*Windows-x64.zip
+            release/*Windows-x64-Setup.exe
           if-no-files-found: error
 
   macos:

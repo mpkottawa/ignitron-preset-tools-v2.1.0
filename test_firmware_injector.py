@@ -1452,6 +1452,41 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 IPT.save_settings({"serial_port": "COM7"})
                 self.assertEqual("COM7", IPT.load_settings()["serial_port"])
 
+    def test_saved_platformio_executable_is_preferred(self):
+        with tempfile.TemporaryDirectory() as temp:
+            executable = Path(temp) / "platformio.exe"
+            executable.write_bytes(b"test executable placeholder")
+            with mock.patch.dict(os.environ, {"IGNITRON_CONFIG_DIR": temp}), mock.patch.object(
+                IPT.shutil, "which", return_value=None
+            ):
+                IPT.save_settings({"platformio_executable": str(executable)})
+                self.assertEqual(str(executable), IPT.default_platformio())
+
+    def test_windows_release_builds_and_smoke_tests_setup_executable(self):
+        build_script = (ROOT / "build_release.ps1").read_text(encoding="utf-8")
+        installer = (ROOT / "windows_installer.iss").read_text(encoding="utf-8")
+        helper = (ROOT / "windows_programming_setup.ps1").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github/workflows/build-release.yml").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("ISCC.exe", build_script)
+        self.assertIn("Windows-$Architecture-Setup.exe", build_script)
+        self.assertIn("PrivilegesRequired=lowest", installer)
+        self.assertIn("windows_programming_setup.ps1", installer)
+        self.assertIn("Get-VerifiedDownload", helper)
+        self.assertIn("Invoke-ProgrammingBuildCheck", helper)
+        self.assertIn("PlatformIOInstallerSha256", helper)
+        self.assertIn("Verify Windows installer", workflow)
+        self.assertIn("release/*Windows-x64-Setup.exe", workflow)
+        self.assertIn("Windows Programming Setup", readme)
+        self.assertIn("does **not** erase or flash the pedal", readme)
+        for source_file in (
+            "WINDOWS-INSTALL-GUIDE.md",
+            "windows_installer.iss",
+            "windows_programming_setup.ps1",
+        ):
+            self.assertIn(source_file, RELEASE_TOOLS.SOURCE_FILES)
+
     def test_public_release_versions_agree(self):
         self.assertEqual("2.1.03", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent

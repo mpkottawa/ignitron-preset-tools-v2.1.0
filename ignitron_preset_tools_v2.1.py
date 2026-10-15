@@ -771,6 +771,7 @@ def default_project_dir():
 
 
 def default_platformio():
+    saved = str(load_settings().get("platformio_executable", "")).strip()
     executable = shutil.which("platformio") or shutil.which("pio")
     if sys.platform.startswith("win"):
         candidates = [
@@ -787,6 +788,8 @@ def default_platformio():
         ]
     if executable:
         candidates.insert(0, Path(executable))
+    if saved:
+        candidates.insert(0, Path(saved))
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
@@ -5005,6 +5008,7 @@ class FilesystemUploaderPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -5844,6 +5848,7 @@ class FirmwareUploadPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()
