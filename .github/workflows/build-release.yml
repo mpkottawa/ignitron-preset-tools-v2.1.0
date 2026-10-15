@@ -64,8 +64,10 @@ jobs:
           $setup = @(Get-ChildItem -LiteralPath release -Filter "*Windows-x64-Setup.exe")
           if ($setup.Count -ne 1) { throw "Expected one Windows Setup executable; found $($setup.Count)." }
           $installDir = Join-Path $env:RUNNER_TEMP "ipt-installer-smoke"
-          & $setup[0].FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS "/DIR=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Setup exited with code $LASTEXITCODE." }
+          $setupProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($setupProcess.ExitCode -ne 0) { throw "Setup exited with code $($setupProcess.ExitCode)." }
           $apps = @(Get-ChildItem -LiteralPath $installDir -Filter "Ignitron Preset Tools v*.exe" -File)
           if ($apps.Count -ne 1) { throw "Expected one installed IPT executable; found $($apps.Count)." }
           $app = $apps[0].FullName
@@ -77,8 +79,10 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $programmingSetup -SelfTest -NonInteractive
           if ($LASTEXITCODE -ne 0) { throw "Installed programming setup self-test failed." }
           $uninstaller = Join-Path $installDir "unins000.exe"
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with code $LASTEXITCODE." }
+          $uninstallProcess = Start-Process -FilePath $uninstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"
+          ) -Wait -PassThru
+          if ($uninstallProcess.ExitCode -ne 0) { throw "Uninstaller exited with code $($uninstallProcess.ExitCode)." }
       - uses: actions/upload-artifact@v4
         with:
           name: Ignitron-Preset-Tools-v2.1.03-Windows-x64
