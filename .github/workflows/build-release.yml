@@ -76,6 +76,18 @@ jobs:
           foreach ($required in @($app, $programmingSetup, $firmware)) {
             if (-not (Test-Path -LiteralPath $required)) { throw "Installer omitted $required" }
           }
+          $upgradeMarker = Join-Path $installDir "ignitron firmware\upgrade-marker.txt"
+          Set-Content -LiteralPath $upgradeMarker -Value "preserve this firmware copy"
+          $upgradeProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($upgradeProcess.ExitCode -ne 0) { throw "Upgrade setup exited with code $($upgradeProcess.ExitCode)." }
+          $backupRoot = Join-Path $installDir "firmware backups"
+          $backupMarkers = @(Get-ChildItem -LiteralPath $backupRoot -Filter "upgrade-marker.txt" -File -Recurse)
+          if ($backupMarkers.Count -ne 1) {
+            throw "Expected the upgrade to preserve one firmware marker; found $($backupMarkers.Count)."
+          }
+          if (-not (Test-Path -LiteralPath $firmware)) { throw "Upgrade did not install a fresh firmware copy." }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $programmingSetup -SelfTest -NonInteractive
           if ($LASTEXITCODE -ne 0) { throw "Installed programming setup self-test failed." }
           $uninstaller = Join-Path $installDir "unins000.exe"

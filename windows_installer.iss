@@ -55,6 +55,12 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; Remove the previous packaged runtime before copying the new release. User data and
+; firmware folders are intentionally excluded (firmware is backed up in [Code]).
+Type: files; Name: "{app}\Ignitron Preset Tools v*.exe"
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Icons]
 Name: "{group}\Ignitron Preset Tools v{#AppVersion}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Windows Programming Setup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\windows_programming_setup.ps1"" -ProjectDir ""{app}\ignitron firmware"""
@@ -65,6 +71,9 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Ignitron Preset Tools"; Flags: postinstall nowait skipifsilent unchecked
 
 [Code]
+const
+  LineBreak = #13#10;
+
 var
   PreviousVersion: String;
   PreviousInstallDir: String;
@@ -93,9 +102,9 @@ begin
       wpSelectDir,
       'Previous version detected',
       'Ignitron Preset Tools ' + PreviousVersion + ' is already installed.',
-      'Previous installation:' + #13#10 + PreviousInstallDir + #13#10#13#10 +
+      'Previous installation:' + LineBreak + PreviousInstallDir + LineBreak + LineBreak +
       'Setup will update the application in this location. Your IPT settings are preserved.' +
-      #13#10#13#10 +
+      LineBreak + LineBreak +
       'To use another location, click Back and choose it on the destination-folder page.'
     );
   end;
