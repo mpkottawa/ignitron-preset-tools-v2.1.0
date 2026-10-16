@@ -11,6 +11,8 @@
 
 The installer does not need administrator access. Python and PlatformIO are installed only for the current Windows user. The Silicon Labs USB driver is a separate, signed hardware driver and may require administrator approval if Windows has not already installed it.
 
+When Setup detects an installer-based earlier release, it displays the previous version and installation path before updating it. Use **Back** to return to the destination-folder page if you need to select another location. IPT settings stored under `%APPDATA%` are preserved. Existing bundled firmware projects are moved under the installation's timestamped `firmware backups` folder before fresh release copies are installed.
+
 ## What is checked
 
 - Python 3.9 or newer. If missing, setup offers the pinned 64-bit Python runtime from `python.org`.
@@ -64,6 +66,6 @@ To include the firmware and filesystem build checks, omit `-SkipBuild`.
 
 - Setup checks and builds, but never flashes or erases the pedal.
 - Flashing remains an explicit action in IPT.
-- Releases install side-by-side in versioned folders.
+- Setup detects and updates an earlier installer-based release; portable copies remain independent.
 - Existing IPT settings and custom firmware-folder choices are preserved.
 - Uninstalling IPT does not remove the shared settings stored under `%APPDATA%\Ignitron Preset Tools`.

@@ -32,7 +32,7 @@ Both projects are sanitized for release: saved host serial ports, build caches, 
 
 ### Windows
 
-Beginning with the next release, download the `Windows-x64-Setup.exe` asset and run it. This is the recommended Windows package. It installs IPT for the current user without administrator access, creates Start-menu shortcuts, and offers to run **Windows Programming Setup** after installation. Each IPT version is installed in its own folder so upgrading does not overwrite another release or a customized firmware project.
+Beginning with the next release, download the `Windows-x64-Setup.exe` asset and run it. This is the recommended Windows package. It installs IPT for the current user without administrator access, creates Start-menu shortcuts, and offers to run **Windows Programming Setup** after installation. When another installer-based IPT version is present, Setup shows its version and location and updates the application there. The destination-folder page always remains available, shared IPT settings are preserved, and bundled firmware folders are moved into a timestamped `firmware backups` folder before fresh copies are installed.
 
 Windows Programming Setup:
 
