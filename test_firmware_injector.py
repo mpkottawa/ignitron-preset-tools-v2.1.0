@@ -1472,6 +1472,7 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         self.assertIn("ISCC.exe", build_script)
         self.assertIn("Windows-$Architecture-Setup.exe", build_script)
         self.assertIn("PrivilegesRequired=lowest", installer)
+        self.assertIn("DisableDirPage=no", installer)
         self.assertIn("windows_programming_setup.ps1", installer)
         self.assertIn("Get-VerifiedDownload", helper)
         self.assertIn("Invoke-ProgrammingBuildCheck", helper)

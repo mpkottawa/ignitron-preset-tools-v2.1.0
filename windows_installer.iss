@@ -27,6 +27,7 @@ AppPublisherURL=https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0
 AppSupportURL=https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/issues
 DefaultDirName={localappdata}\Programs\Ignitron Preset Tools v{#AppVersion}
 DefaultGroupName=Ignitron Preset Tools v{#AppVersion}
+DisableDirPage=no
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
