@@ -1487,6 +1487,16 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         ):
             self.assertIn(source_file, RELEASE_TOOLS.SOURCE_FILES)
 
+    def test_firmware_actions_explain_what_each_upload_changes(self):
+        source = Path(IPT.__file__).read_text(encoding="utf-8")
+        for hint in (
+            "firmware + banks",
+            "firmware only",
+            "checks preset data",
+            "updates banks only",
+        ):
+            self.assertIn(f'"{hint}"', source)
+
     def test_public_release_versions_agree(self):
         self.assertEqual("2.1.03", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
