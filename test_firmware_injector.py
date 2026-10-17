@@ -303,6 +303,21 @@ const bool ENABLE_FX_BLINK = false;
         self.assertIn("REBOOT PEDAL", display_source)
         self.assertIn("UP/DN   P4 SELECT", display_source)
 
+    def test_blocklist_navigation_debounces_raw_button_edges(self):
+        buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")
+        header = (TEMPLATE / "src/SparkButtonHandler.h").read_text(errors="replace")
+        start, end = IPT._cpp_function_span(
+            buttons, "void SparkButtonHandler::readBlocklistButtons()")
+        read_blocklist = buttons[start:end]
+
+        self.assertIn("BLOCKLIST_BUTTON_DEBOUNCE_MS = 50", buttons)
+        self.assertIn("blocklistPressedEdge", header)
+        self.assertIn("rawChangedAt", header)
+        self.assertEqual(3, read_blocklist.count("blocklistPressedEdge("))
+        self.assertNotIn("upPressed && !blocklistUpPressed_", read_blocklist)
+        self.assertNotIn("downPressed && !blocklistDownPressed_", read_blocklist)
+        self.assertNotIn("deletePressed && !blocklistDeletePressed_", read_blocklist)
+
     def test_required_install_guards_optional_amp_blocklist_api(self):
         baseline = ROOT / "Ignitron 1.9.0"
         if not baseline.exists():
