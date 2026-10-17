@@ -70,7 +70,7 @@ jobs:
           $legacyInstallDir = Join-Path $env:RUNNER_TEMP "Ignitron Preset Tools v2.1.03"
           $installDir = Join-Path $env:RUNNER_TEMP "Ignitron Preset Tools v$releaseVersion"
           $setupProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
-            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$legacyInstallDir"
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=`"$legacyInstallDir`""
           ) -Wait -PassThru
           if ($setupProcess.ExitCode -ne 0) { throw "Setup exited with code $($setupProcess.ExitCode)." }
           $apps = @(Get-ChildItem -LiteralPath $legacyInstallDir -Filter "Ignitron Preset Tools v*.exe" -File)
