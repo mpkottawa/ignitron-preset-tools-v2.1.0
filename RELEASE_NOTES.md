@@ -1,5 +1,10 @@
 # Ignitron Preset Tools v2.1.04
 
+## Unreleased
+
+- Windows installer upgrades now propose a sibling installation folder carrying the new IPT version, rename the previous version-named folder during the upgrade, refresh versioned shortcuts, and retain the existing firmware-backup and shared-settings protections.
+- Added a native Windows installer smoke test that starts from a `v2.1.03`-named folder and verifies the old folder is replaced by the current version-named folder.
+
 ## v2.1.04 - Windows setup, clearer flashing, and SSD1309 cold starts - 2026-10-16
 
 - Added a per-user Windows Setup executable alongside the portable ZIP. It detects installer-based earlier versions, preserves IPT settings, backs up bundled firmware projects before upgrades, and keeps the installation folder selectable.

@@ -63,25 +63,35 @@ jobs:
         run: |
           $setup = @(Get-ChildItem -LiteralPath release -Filter "*Windows-x64-Setup.exe")
           if ($setup.Count -ne 1) { throw "Expected one Windows Setup executable; found $($setup.Count)." }
-          $installDir = Join-Path $env:RUNNER_TEMP "ipt-installer-smoke"
+          $buildScript = Get-Content -LiteralPath build_release.ps1 -Raw
+          $versionMatch = [regex]::Match($buildScript, '\$ReleaseVersion\s*=\s*"([^"]+)"')
+          if (-not $versionMatch.Success) { throw "Could not read the packaged release version." }
+          $releaseVersion = $versionMatch.Groups[1].Value
+          $legacyInstallDir = Join-Path $env:RUNNER_TEMP "Ignitron Preset Tools v2.1.03"
+          $installDir = Join-Path $env:RUNNER_TEMP "Ignitron Preset Tools v$releaseVersion"
           $setupProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
-            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$installDir"
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$legacyInstallDir"
           ) -Wait -PassThru
           if ($setupProcess.ExitCode -ne 0) { throw "Setup exited with code $($setupProcess.ExitCode)." }
-          $apps = @(Get-ChildItem -LiteralPath $installDir -Filter "Ignitron Preset Tools v*.exe" -File)
+          $apps = @(Get-ChildItem -LiteralPath $legacyInstallDir -Filter "Ignitron Preset Tools v*.exe" -File)
           if ($apps.Count -ne 1) { throw "Expected one installed IPT executable; found $($apps.Count)." }
+          $upgradeMarker = Join-Path $legacyInstallDir "ignitron firmware\upgrade-marker.txt"
+          Set-Content -LiteralPath $upgradeMarker -Value "preserve this firmware copy"
+          $upgradeProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS"
+          ) -Wait -PassThru
+          if ($upgradeProcess.ExitCode -ne 0) { throw "Upgrade setup exited with code $($upgradeProcess.ExitCode)." }
+          if (Test-Path -LiteralPath $legacyInstallDir) {
+            throw "Upgrade left the previous version-named installation folder behind."
+          }
+          $apps = @(Get-ChildItem -LiteralPath $installDir -Filter "Ignitron Preset Tools v*.exe" -File)
+          if ($apps.Count -ne 1) { throw "Expected one upgraded IPT executable; found $($apps.Count)." }
           $app = $apps[0].FullName
           $programmingSetup = Join-Path $installDir "windows_programming_setup.ps1"
           $firmware = Join-Path $installDir "ignitron firmware\platformio.ini"
           foreach ($required in @($app, $programmingSetup, $firmware)) {
             if (-not (Test-Path -LiteralPath $required)) { throw "Installer omitted $required" }
           }
-          $upgradeMarker = Join-Path $installDir "ignitron firmware\upgrade-marker.txt"
-          Set-Content -LiteralPath $upgradeMarker -Value "preserve this firmware copy"
-          $upgradeProcess = Start-Process -FilePath $setup[0].FullName -ArgumentList @(
-            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/DIR=$installDir"
-          ) -Wait -PassThru
-          if ($upgradeProcess.ExitCode -ne 0) { throw "Upgrade setup exited with code $($upgradeProcess.ExitCode)." }
           $backupRoot = Join-Path $installDir "firmware backups"
           $backupMarkers = @(Get-ChildItem -LiteralPath $backupRoot -Filter "upgrade-marker.txt" -File -Recurse)
           if ($backupMarkers.Count -ne 1) {

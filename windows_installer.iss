@@ -27,11 +27,12 @@ AppVerName={#MyAppName} v{#AppVersion}
 AppPublisher=Ignitron Preset Tools
 AppPublisherURL=https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0
 AppSupportURL=https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/issues
-DefaultDirName={localappdata}\Programs\Ignitron Preset Tools
+DefaultDirName={localappdata}\Programs\Ignitron Preset Tools v{#AppVersion}
 DefaultGroupName=Ignitron Preset Tools v{#AppVersion}
 DisableDirPage=no
 DisableProgramGroupPage=yes
-UsePreviousAppDir=yes
+UsePreviousAppDir=no
+UsePreviousGroup=no
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -60,6 +61,8 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 ; firmware folders are intentionally excluded (firmware is backed up in [Code]).
 Type: files; Name: "{app}\Ignitron Preset Tools v*.exe"
 Type: filesandordirs; Name: "{app}\_internal"
+Type: files; Name: "{autodesktop}\Ignitron Preset Tools v*.lnk"
+Type: filesandordirs; Name: "{autoprograms}\Ignitron Preset Tools v*"
 
 [Icons]
 Name: "{group}\Ignitron Preset Tools v{#AppVersion}"; Filename: "{app}\{#MyAppExeName}"
@@ -77,6 +80,7 @@ const
 var
   PreviousVersion: String;
   PreviousInstallDir: String;
+  SuggestedInstallDir: String;
   PreviousInstallPage: TOutputMsgWizardPage;
 
 function ReadPreviousInstall(): Boolean;
@@ -89,6 +93,11 @@ begin
     (PreviousInstallDir <> '');
   if Result then
   begin
+    PreviousInstallDir := RemoveBackslashUnlessRoot(PreviousInstallDir);
+    Result := DirExists(PreviousInstallDir);
+  end;
+  if Result then
+  begin
     if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', PreviousVersion) then
       PreviousVersion := 'an earlier version';
   end;
@@ -98,12 +107,17 @@ procedure InitializeWizard();
 begin
   if ReadPreviousInstall() then
   begin
+    SuggestedInstallDir := AddBackslash(ExtractFileDir(PreviousInstallDir)) +
+      'Ignitron Preset Tools v{#AppVersion}';
+    WizardForm.DirEdit.Text := SuggestedInstallDir;
     PreviousInstallPage := CreateOutputMsgPage(
       wpSelectDir,
       'Previous version detected',
       'Ignitron Preset Tools ' + PreviousVersion + ' is already installed.',
       'Previous installation:' + LineBreak + PreviousInstallDir + LineBreak + LineBreak +
-      'Setup will update the application in this location. Your IPT settings are preserved.' +
+      'New version folder:' + LineBreak + SuggestedInstallDir + LineBreak + LineBreak +
+      'Setup will rename the previous installation folder, then update the application. ' +
+      'Your IPT settings are preserved.' +
       LineBreak + LineBreak +
       'To use another location, click Back and choose it on the destination-folder page.'
     );
@@ -115,15 +129,39 @@ var
   BackupRoot: String;
   SourcePath: String;
   DestinationPath: String;
+  CurrentInstallDir: String;
 begin
   Result := '';
   if PreviousInstallDir = '' then
     Exit;
 
-  BackupRoot := AddBackslash(PreviousInstallDir) + 'firmware backups\before-update-' +
+  CurrentInstallDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  if CompareText(PreviousInstallDir, CurrentInstallDir) <> 0 then
+  begin
+    if DirExists(CurrentInstallDir) then
+    begin
+      Result := 'Setup cannot rename the previous installation because the new version folder already exists: ' +
+        CurrentInstallDir + LineBreak + LineBreak +
+        'Choose an empty destination folder or move the existing folder, then run Setup again.';
+      Exit;
+    end;
+    if not ForceDirectories(ExtractFileDir(CurrentInstallDir)) then
+    begin
+      Result := 'Setup could not create the parent folder for: ' + CurrentInstallDir;
+      Exit;
+    end;
+    if not RenameFile(PreviousInstallDir, CurrentInstallDir) then
+    begin
+      Result := 'Setup could not rename the previous installation folder. Close IPT and any File Explorer or terminal windows using it, then run Setup again.';
+      Exit;
+    end;
+    PreviousInstallDir := CurrentInstallDir;
+  end;
+
+  BackupRoot := AddBackslash(CurrentInstallDir) + 'firmware backups\before-update-' +
     GetDateTimeString('yyyymmdd-hhnnss', '-', ':');
 
-  SourcePath := AddBackslash(PreviousInstallDir) + 'ignitron firmware';
+  SourcePath := AddBackslash(CurrentInstallDir) + 'ignitron firmware';
   if DirExists(SourcePath) then
   begin
     if not ForceDirectories(BackupRoot) then
@@ -139,7 +177,7 @@ begin
     end;
   end;
 
-  SourcePath := AddBackslash(PreviousInstallDir) + 'Ignitron 1.9.0';
+  SourcePath := AddBackslash(CurrentInstallDir) + 'Ignitron 1.9.0';
   if DirExists(SourcePath) then
   begin
     if not ForceDirectories(BackupRoot) then
