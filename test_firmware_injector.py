@@ -306,6 +306,9 @@ const bool ENABLE_FX_BLINK = false;
         self.assertIn("AMP_DIAG cached=%d live=%d", bt_source)
         self.assertIn('LittleFS.mkdir(configDirectory)', bt_source)
         self.assertIn('"BLOCK SAVE FAILED"', data_source)
+        self.assertIn("sparkModelFromAdvertisement", bt_source)
+        self.assertIn('upperName.find("NEO")', bt_source)
+        self.assertIn("Corrected blocked amp model", bt_source)
 
     def test_blocklist_exit_restart_waits_for_button_release(self):
         buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")
