@@ -55,6 +55,7 @@ private:
     void updateLedLooperMode();
     void updateLedTuner();
 
+    void writeLed(int gpio, bool on);
     void allLedOff();
     void switchLed(int num, bool on = true, bool fxMode = false);
 };

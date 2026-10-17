@@ -118,6 +118,9 @@ enum BatteryChargingStatus {
 // this can be irritating with a pedal flashing.
 const bool ENABLE_FX_BLINK = false;
 
+// PWM brightness for all pedal LEDs. 0 = off, 100 = full brightness.
+const int LED_BRIGHTNESS_PERCENT = 100;
+
 // Button GPIOs
 enum ButtonGpio {
     BUTTON_PRESET1_GPIO = 25,

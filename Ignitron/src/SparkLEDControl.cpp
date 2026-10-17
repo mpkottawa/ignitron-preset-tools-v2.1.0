@@ -241,19 +241,19 @@ void SparkLEDControl::updateLedTuner() {
 
 void SparkLEDControl::allLedOff() {
     // Preset LEDs
-    digitalWrite(LED_PRESET1_GPIO, LOW);
-    digitalWrite(LED_PRESET2_GPIO, LOW);
-    digitalWrite(LED_PRESET3_GPIO, LOW);
-    digitalWrite(LED_PRESET4_GPIO, LOW);
+    writeLed(LED_PRESET1_GPIO, false);
+    writeLed(LED_PRESET2_GPIO, false);
+    writeLed(LED_PRESET3_GPIO, false);
+    writeLed(LED_PRESET4_GPIO, false);
 
-    digitalWrite(LED_BANK_DOWN_GPIO, LOW);
-    digitalWrite(LED_BANK_UP_GPIO, LOW);
+    writeLed(LED_BANK_DOWN_GPIO, false);
+    writeLed(LED_BANK_UP_GPIO, false);
 
     // FX LEDS
-    digitalWrite(LED_DRIVE_GPIO, LOW);
-    digitalWrite(LED_MOD_GPIO, LOW);
-    digitalWrite(LED_DELAY_GPIO, LOW);
-    digitalWrite(LED_REVERB_GPIO, LOW);
+    writeLed(LED_DRIVE_GPIO, false);
+    writeLed(LED_MOD_GPIO, false);
+    writeLed(LED_DELAY_GPIO, false);
+    writeLed(LED_REVERB_GPIO, false);
 
 #ifndef DEDICATED_PRESET_LEDS
     // For special corner case where the extra dedicated
@@ -265,6 +265,15 @@ void SparkLEDControl::allLedOff() {
     digitalWrite(OPTIONAL_GPIO_3, LOW);
     digitalWrite(OPTIONAL_GPIO_4, LOW);
 #endif
+}
+
+void SparkLEDControl::writeLed(int gpio, bool on) {
+    if (gpio == LED_GPIO_INVALID) {
+        return;
+    }
+    const int brightnessPercent = constrain(LED_BRIGHTNESS_PERCENT, 0, 100);
+    const int pwmDuty = (brightnessPercent * 255 + 50) / 100;
+    analogWrite(gpio, on ? pwmDuty : 0);
 }
 
 void SparkLEDControl::switchLed(int num, bool on, bool fxMode) {
@@ -285,6 +294,6 @@ void SparkLEDControl::switchLed(int num, bool on, bool fxMode) {
     int ledGpio = SparkHelper::getLedGpio(num, fxMode);
     if (ledGpio != LED_GPIO_INVALID) {
         // Serial.printf("Pin %d [State=%d], invert=%d, fxMode=%d\n", ledGpio, STATE, blinkInvert, fxMode);
-        digitalWrite(ledGpio, STATE);
+        writeLed(ledGpio, STATE == HIGH);
     }
 }

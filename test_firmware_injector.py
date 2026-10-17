@@ -318,6 +318,53 @@ const bool ENABLE_FX_BLINK = false;
         self.assertNotIn("downPressed && !blocklistDownPressed_", read_blocklist)
         self.assertNotIn("deletePressed && !blocklistDeletePressed_", read_blocklist)
 
+    def test_led_brightness_uses_pwm_and_is_saved_for_every_flash(self):
+        def variable(value):
+            state = SimpleNamespace(value=value)
+            state.get = lambda: state.value
+            state.set = lambda new_value: setattr(state, "value", new_value)
+            return state
+
+        led_source = (TEMPLATE / "src/SparkLEDControl.cpp").read_text(errors="replace")
+        config_source = (TEMPLATE / "src/Config_Definitions.h").read_text(errors="replace")
+        app_source = (ROOT / "ignitron_preset_tools_v2.1.py").read_text(errors="replace")
+        self.assertIn("LED_BRIGHTNESS_PERCENT = 100", config_source)
+        self.assertIn("analogWrite(gpio, on ? pwmDuty : 0)", led_source)
+        self.assertIn("LED brightness %", app_source)
+
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "Ignitron"
+            (project / "src").mkdir(parents=True)
+            config = project / "src/Config_Definitions.h"
+            config.write_text(
+                'const string VERSION = "2.1.04";\n'
+                'const int LED_BRIGHTNESS_PERCENT = 100;\n',
+                encoding="utf-8",
+            )
+            page = object.__new__(IPT.FirmwareUploadPage)
+            page.app = SimpleNamespace(set_status=lambda _text: None)
+            page.project_var = variable(str(project))
+            page.fw_version_var = variable("2.1.04")
+            page.led_brightness_var = variable("37")
+            page.apply_screen_mod_var = variable(False)
+            page.apply_battery_mod_var = variable(False)
+            page.apply_timing_mod_var = variable(False)
+            page.apply_amp_blocklist_mod_var = variable(False)
+            page.apply_led_mod_var = variable(False)
+            page.apply_hardware_pins_var = variable(False)
+            page.append_log = lambda _text: None
+
+            self.assertTrue(page.save_firmware_settings(
+                show_message=False, selected_only=True))
+            self.assertIn(
+                "const int LED_BRIGHTNESS_PERCENT = 37;",
+                config.read_text(encoding="utf-8"),
+            )
+
+            page.led_brightness_var.set("101")
+            self.assertFalse(page.save_firmware_settings(
+                show_message=False, selected_only=True))
+
     def test_required_install_guards_optional_amp_blocklist_api(self):
         baseline = ROOT / "Ignitron 1.9.0"
         if not baseline.exists():

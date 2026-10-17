@@ -5326,6 +5326,7 @@ class FirmwareUploadPage(Page):
         self.battery_r2_var = tk.StringVar(value="10")
         self.dual_battery_var = tk.BooleanVar(value=False)
         self.fx_blink_var = tk.BooleanVar(value=False)
+        self.led_brightness_var = tk.StringVar(value="100")
         self.dedicated_leds_var = tk.BooleanVar(
             value=STOCK_HARDWARE_SETTINGS["variables"]["dedicated_leds_var"]
         )
@@ -5616,10 +5617,13 @@ class FirmwareUploadPage(Page):
         self._setting_label(grid, "Long press ms", 0, 2, bg=section_bg)
         ttk.Entry(grid, textvariable=self.long_press_var, width=12).grid(row=1, column=2, sticky="w", padx=(0, 18), pady=(0, 8))
 
+        self._setting_label(grid, "LED brightness %", 0, 3, bg=section_bg)
+        ttk.Entry(grid, textvariable=self.led_brightness_var, width=12).grid(row=1, column=3, sticky="w", padx=(0, 18), pady=(0, 8))
+
         tk.Checkbutton(grid, text="FX blink", variable=self.fx_blink_var,
                        bg=section_bg, fg=TEXT, selectcolor=CARD_ALT,
                        activebackground=section_bg, activeforeground=TEXT,
-                       font=("Segoe UI", 9)).grid(row=1, column=3, sticky="w", pady=(14, 8))
+                       font=("Segoe UI", 9)).grid(row=1, column=4, sticky="w", pady=(14, 8))
 
         battery = tk.Frame(panel, bg=section_bg)
         battery.pack(fill="x", padx=16 if embedded else 22, pady=(0, 8 if embedded else 16))
@@ -6182,6 +6186,7 @@ class FirmwareUploadPage(Page):
         self.battery_r1_var.set(self._resistor_to_kohm(self._extract_const_value(text, "float", "VOLTAGE_DIVIDER_R1", "(22 * 1000)")))
         self.battery_r2_var.set(self._resistor_to_kohm(self._extract_const_value(text, "float", "VOLTAGE_DIVIDER_R2", "(10 * 1000)")))
         self.fx_blink_var.set(self._extract_const_value(text, "bool", "ENABLE_FX_BLINK", "false").lower() == "true")
+        self.led_brightness_var.set(self._extract_const_value(text, "int", "LED_BRIGHTNESS_PERCENT", "100"))
         self.dedicated_leds_var.set(self._is_define_enabled(text, "DEDICATED_PRESET_LEDS"))
         self.long_press_var.set(self._extract_const_value(text, "int", "LONG_BUTTON_PRESS_TIME", "1000"))
         for name, variable in self.hardware_pin_vars.items():
@@ -6222,6 +6227,17 @@ class FirmwareUploadPage(Page):
         if 6 <= gpio <= 11:
             raise ValueError(f"{label} cannot use GPIO {gpio}; GPIO 6-11 are connected to ESP32 flash")
         return gpio
+
+    def _validate_led_brightness(self):
+        variable = getattr(self, "led_brightness_var", None)
+        value = variable.get().strip() if variable is not None else "100"
+        try:
+            brightness = int(value)
+        except ValueError as exc:
+            raise ValueError("LED brightness must be a whole number from 0 to 100") from exc
+        if brightness < 0 or brightness > 100:
+            raise ValueError("LED brightness must be from 0 to 100")
+        return str(brightness)
 
     def save_hardware_settings(self, show_message=True):
         if not self.apply_hardware_pins_var.get():
@@ -6341,6 +6357,7 @@ class FirmwareUploadPage(Page):
                 self.append_log("Invalid firmware setting: Firmware version cannot be empty\n")
             return False
         try:
+            led_brightness = self._validate_led_brightness()
             if not selected_only or self.apply_battery_mod_var.get():
                 self._validate_number("Battery cells", self.battery_cells_var.get())
                 self._validate_number("Battery ADC pin", self.battery_adc_pin_var.get())
@@ -6360,6 +6377,7 @@ class FirmwareUploadPage(Page):
         # OLED/battery/timing groups are being applied.
         text = self._config_text()
         text = self._set_string_const(text, "VERSION", firmware_version)
+        text = self._set_const_value(text, "int", "LED_BRIGHTNESS_PERCENT", led_brightness)
         if not selected_only or self.apply_screen_mod_var.get():
             selected_oled_driver = self.oled_driver_choices.get(self.oled_driver_var.get(), self.oled_driver_var.get())
             text = normalize_oled_driver_definitions(text, selected_oled_driver)
@@ -6406,6 +6424,12 @@ class FirmwareUploadPage(Page):
         if actual_version != expected_version:
             problems.append(
                 f"firmware version is {actual_version or '(missing)'}, expected {expected_version}"
+            )
+        expected_brightness = self._validate_led_brightness()
+        actual_brightness = self._extract_const_value(text, "int", "LED_BRIGHTNESS_PERCENT")
+        if actual_brightness != expected_brightness:
+            problems.append(
+                f"LED brightness is {actual_brightness or '(missing)'}, expected {expected_brightness}"
             )
 
         if verify_all or self.apply_screen_mod_var.get():
