@@ -501,12 +501,6 @@ void SparkButtonHandler::btnSwitchTunerModeHandler(BfButton *btn, BfButton::pres
         Serial.println("SparkDataControl not setup yet, ignoring button press.");
         return;
     }
- #ifdef ENABLE_IPT_AMP_BLOCKLIST
-    if (isBankComboPressed()) {
-        spark_dc_->blockCurrentAmp();
-        return;
-    }
-#endif
     // Switch between tuner mode where tuner can be separately switched
     // Debug
 #ifdef DEBUG
@@ -681,12 +675,6 @@ void SparkButtonHandler::btnSwitchModeHandler(BfButton *btn, BfButton::press_pat
         Serial.println("SparkDataControl not setup yet, ignoring button press.");
         return;
     }
-#ifdef ENABLE_IPT_AMP_BLOCKLIST
-    if (isBankComboPressed()) {
-        spark_dc_->blockCurrentAmp();
-        return;
-    }
-#endif
     // Switch between preset mode FX mode where FX can be separately switched
     // Debug
 #ifdef DEBUG

@@ -278,7 +278,31 @@ const bool ENABLE_FX_BLINK = false;
         self.assertNotIn("allLedOff()", dedicated_path)
         self.assertIn("presetNum == activePresetNum", dedicated_path)
         self.assertIn("switchLed(presetNum", dedicated_path)
-        self.assertIn("allLedOff()", shared_path)
+        self.assertNotIn("allLedOff()", shared_path)
+        self.assertIn("ledNum == activePresetNum", shared_path)
+
+    def test_pwm_led_updates_do_not_clear_then_redraw_each_loop(self):
+        led_source = (TEMPLATE / "src/SparkLEDControl.cpp").read_text(errors="replace")
+        for signature in (
+                "void SparkLEDControl::updateLedAppPresetMode()",
+                "void SparkLEDControl::updateLedKeyboard()",
+                "void SparkLEDControl::updateLedLooperMode()",
+                "void SparkLEDControl::updateLedTuner()"):
+            start, end = IPT._cpp_function_span(led_source, signature)
+            self.assertNotIn("allLedOff()", led_source[start:end], signature)
+
+        start, end = IPT._cpp_function_span(
+            led_source, "void SparkLEDControl::updateLedAmp()")
+        amp_update = led_source[start:end]
+        idle_path = amp_update[amp_update.rindex("} else {"):]
+        self.assertNotIn("allLedOff()", idle_path)
+        self.assertIn("ledNum == activePresetNum", idle_path)
+
+    def test_blocklist_combo_has_one_owner_and_reports_amp_link_state(self):
+        buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")
+        bt_source = (TEMPLATE / "src/SparkBTControl.cpp").read_text(errors="replace")
+        self.assertEqual(1, buttons.count("spark_dc_->blockCurrentAmp();"))
+        self.assertIn("AMP_DIAG cached=%d live=%d", bt_source)
 
     def test_blocklist_exit_restart_waits_for_button_release(self):
         buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")

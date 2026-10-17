@@ -1076,6 +1076,17 @@ void SparkBTControl::startBTSerial() {
 }
 
 void SparkBTControl::printSerialDiagnostics() {
+    const bool ampLive = client_ && client_->isConnected();
+    string ampPeer = lastConnectedAmpAddress_;
+    if (ampLive) {
+        ampPeer = client_->getPeerAddress().toString();
+    }
+    Serial.printf("AMP_DIAG cached=%d live=%d found=%d peer=%s blocked=%u\n",
+                  isAmpConnected_ ? 1 : 0, ampLive ? 1 : 0,
+                  isConnectionFound_ ? 1 : 0,
+                  ampPeer.empty() ? "none" : ampPeer.c_str(),
+                  (unsigned int)blockedAmpAddresses_.size());
+
     if (!btSerial) {
         Serial.println("BT_DIAG mode=INACTIVE client=0 peer=none");
         return;

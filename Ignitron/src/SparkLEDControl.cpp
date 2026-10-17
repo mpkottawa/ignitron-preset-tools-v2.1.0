@@ -113,8 +113,12 @@ void SparkLEDControl::updateLedAppPresetMode() {
         switchLed(presetNum, presetNum == activePresetNum, false);
     }
 #else
-    allLedOff();
-    switchLed(activePresetNum, true, false);
+    // Apply the complete steady state directly. Clearing every output before
+    // restoring the active LED creates a visible off pulse on every loop when
+    // PWM brightness is enabled.
+    for (int ledNum = 1; ledNum <= 6; ledNum++) {
+        switchLed(ledNum, ledNum == activePresetNum, false);
+    }
 #endif
 }
 
@@ -156,86 +160,68 @@ void SparkLEDControl::updateLedAmp() {
         }
 
     } else {
-        allLedOff();
-        switchLed(activePresetNum, true);
+        for (int ledNum = 1; ledNum <= 6; ledNum++) {
+            switchLed(ledNum, ledNum == activePresetNum);
+        }
     }
 }
 
 void SparkLEDControl::updateLedKeyboard() {
 
     uint8_t pressedKey = sparkDC->lastKeyboardButtonPressed();
-    if (pressedKey == 0) {
-        allLedOff();
-        return;
+    // Map index of pressed key from 1 to 6. A zero key selects no LED.
+    const int index = pressedKey == 0 ? 0 : mapping.indexOfKey(pressedKey);
+    for (int ledNum = 1; ledNum <= 6; ledNum++) {
+        switchLed(ledNum, ledNum == index);
     }
-
-    // Map index of pressed key from 1 to 6
-    int index = mapping.indexOfKey(pressedKey);
-    switchLed(index, HIGH);
 }
 
 void SparkLEDControl::updateLedLooperMode() {
 
     const bool onOff = sparkDC->looperControl().beatOnOff();
-    allLedOff();
-    // if the LED is off turn it on and vice-versa:
-    if (onOff) {
-        ledState = HIGH;
-        switchLed(SPK_LOOPER_BPM_LED_ID, true);
-    } else {
-        ledState = LOW;
-    }
+    ledState = onOff ? HIGH : LOW;
 
     const bool isRecRunning = sparkDC->looperControl().isRecRunning();
-    if (isRecRunning) {
-        switchLed(SPK_LOOPER_REC_DUB_LED_ID, true);
-    } else {
-        switchLed(SPK_LOOPER_REC_DUB_LED_ID, false);
-    }
-
     const bool isPlaying = sparkDC->looperControl().isPlaying();
     const bool isRecAvailable = sparkDC->looperControl().isRecAvailable();
-
-    if (isPlaying) {
-        switchLed(SPK_LOOPER_PLAY_STOP_LED_ID, true);
-    } else if (isRecAvailable) {
-        switchLed(SPK_LOOPER_PLAY_STOP_LED_ID, onOff);
-    } else {
-        switchLed(SPK_LOOPER_PLAY_STOP_LED_ID, false);
-    }
+    const bool playStopOn = isPlaying || (isRecAvailable && onOff);
 
     // TODO: Check why LED is not on when Undo is available during Dub/Play. Seems that 0278 is ignored during play.
     const bool canUndo = sparkDC->looperControl().canUndo();
     const bool canRedo = sparkDC->looperControl().canRedo();
-    if (canRedo) {
-        switchLed(SPK_LOOPER_UNDO_REDO_LED_ID, false);
-    } else if (canUndo) {
-        switchLed(SPK_LOOPER_UNDO_REDO_LED_ID, true);
-    } else {
-        switchLed(SPK_LOOPER_UNDO_REDO_LED_ID, false);
+    const bool undoRedoOn = canUndo && !canRedo;
+
+    // Write every output exactly once per update so PWM never sees a brief
+    // clear-and-redraw transition.
+    for (int ledNum = 1; ledNum <= 6; ledNum++) {
+        bool on = false;
+        if (ledNum == SPK_LOOPER_REC_DUB_LED_ID) {
+            on = isRecRunning;
+        } else if (ledNum == SPK_LOOPER_PLAY_STOP_LED_ID) {
+            on = playStopOn;
+        } else if (ledNum == SPK_LOOPER_UNDO_REDO_LED_ID) {
+            on = undoRedoOn;
+        } else if (ledNum == SPK_LOOPER_BPM_LED_ID) {
+            on = onOff;
+        }
+        switchLed(ledNum, on);
     }
 }
 
 void SparkLEDControl::updateLedTuner() {
-    allLedOff();
-
     SparkStatus &status = SparkStatus::getInstance();
 
     int noteOffsetCents = status.noteOffsetCents();
     int centsTolerance = 5;
+    const bool tunerLeds[] = {
+        noteOffsetCents > -50 && noteOffsetCents < -20,
+        noteOffsetCents > -50 && noteOffsetCents < centsTolerance,
+        noteOffsetCents > -centsTolerance,
+        noteOffsetCents > 20,
+    };
 
-    if (noteOffsetCents > -50 && noteOffsetCents < -20) {
-        switchLed(PRESET1_NUM, true);
-    }
-    if (noteOffsetCents > -50 && noteOffsetCents < centsTolerance) {
-        switchLed(PRESET2_NUM, true);
-    }
-
-    if (noteOffsetCents > -centsTolerance) {
-        switchLed(PRESET3_NUM, true);
-    }
-    if (noteOffsetCents > 20) {
-        switchLed(PRESET4_NUM, true);
+    for (int ledNum = 1; ledNum <= 6; ledNum++) {
+        switchLed(ledNum, ledNum <= 4 ? tunerLeds[ledNum - 1] : false);
     }
 }
 
