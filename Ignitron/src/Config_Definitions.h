@@ -26,7 +26,7 @@ using namespace std;
 #endif
 
 // Software version
-const string VERSION = "2.1.03";
+const string VERSION = "2.1.04";
 
 // Battery indicator
 // Note: This battery can be for the Ignitron controller or the Spark amp.
@@ -108,6 +108,7 @@ enum BatteryChargingStatus {
 // Choose driver below, only one can be defined!
 
 // #define OLED_DRIVER_SSD1306
+// #define OLED_DRIVER_SSD1309
 #define OLED_DRIVER_SH1106
 // #define OLED_DRIVER_SH1107
 
@@ -295,7 +296,6 @@ enum LooperLedID {
     SPK_LOOPER_UNDO_REDO_LED_ID = 3,
     SPK_LOOPER_BPM_LED_ID = 5
 };
-// #define OLED_DRIVER_SSD1309
 #define ENABLE_IPT_AMP_BLOCKLIST
 
 #endif /* CONFIG_DEFINITIONS_H_ */

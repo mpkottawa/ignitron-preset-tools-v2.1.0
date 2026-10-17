@@ -2,7 +2,7 @@
 # Bundled or online setup for the published IPT release. Run as your normal user.
 set -euo pipefail
 
-RELEASE_VERSION="2.1.03"
+RELEASE_VERSION="2.1.04"
 RELEASE_URL="https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v$RELEASE_VERSION"
 CHECK_ONLY=false
 case "${1:-}" in

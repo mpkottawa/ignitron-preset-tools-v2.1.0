@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ignitron Preset Tools v2.1.03 - desktop control center."""
+"""Ignitron Preset Tools v2.1.04 - desktop control center."""
 
 import contextlib
 import ast
@@ -38,10 +38,16 @@ _VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
-APP_VERSION = "2.1.03"
+APP_VERSION = "2.1.04"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
+OLED_DRIVER_DEFINES = (
+    "OLED_DRIVER_SSD1306",
+    "OLED_DRIVER_SSD1309",
+    "OLED_DRIVER_SH1106",
+    "OLED_DRIVER_SH1107",
+)
 REMOTE_TERMINAL_EASTER_EGG_TRIGGER = "ROCK ON"
 REMOTE_TERMINAL_EASTER_EGG_ART_FILE = "Ignitron preset tools logo ASCII 120x60.txt"
 REMOTE_TERMINAL_EASTER_EGG_ART = r"""
@@ -179,6 +185,57 @@ IPT_ADDON_MARKERS = (
     ("src/SparkDataControl.h", "Spark HW store API", "storeHWPreset"),
     ("src/SparkLEDControl.cpp", "safe startup LED initialization", "void SparkLEDControl::begin()"),
 )
+
+
+def normalize_oled_driver_definitions(text, selected_driver):
+    """Write one canonical OLED-driver block and remove stray duplicates."""
+    if selected_driver not in OLED_DRIVER_DEFINES:
+        raise ValueError(f"Unsupported OLED driver: {selected_driver}")
+
+    newline = "\r\n" if "\r\n" in text else "\n"
+    names = "|".join(re.escape(name) for name in OLED_DRIVER_DEFINES)
+    pattern = re.compile(
+        rf"^[ \t]*(?://[ \t]*)?#define[ \t]+(?:{names})\b[^\r\n]*(?:\r?\n|$)",
+        re.MULTILINE,
+    )
+    matches = list(pattern.finditer(text))
+    canonical = "".join(
+        (f"#define {name}" if name == selected_driver else f"// #define {name}")
+        + newline
+        for name in OLED_DRIVER_DEFINES
+    )
+
+    if matches:
+        parts = []
+        cursor = 0
+        for index, match in enumerate(matches):
+            parts.append(text[cursor:match.start()])
+            if index == 0:
+                parts.append(canonical)
+            cursor = match.end()
+        parts.append(text[cursor:])
+        return "".join(parts)
+
+    final_endif = text.rfind("#endif")
+    if final_endif < 0:
+        separator = "" if not text or text.endswith(("\n", "\r")) else newline
+        return text + separator + canonical
+    prefix = text[:final_endif]
+    separator = "" if not prefix or prefix.endswith(("\n", "\r")) else newline
+    return prefix + separator + canonical + text[final_endif:]
+
+
+def inspect_oled_driver_definitions(text):
+    """Return (driver, enabled) for every OLED driver line in file order."""
+    names = "|".join(re.escape(name) for name in OLED_DRIVER_DEFINES)
+    pattern = re.compile(
+        rf"^[ \t]*(?P<comment>//[ \t]*)?#define[ \t]+(?P<name>{names})\b[^\r\n]*$",
+        re.MULTILINE,
+    )
+    return [
+        (match.group("name"), match.group("comment") is None)
+        for match in pattern.finditer(text)
+    ]
 
 BG = "#0d0e12"
 SURFACE = "#15171d"
@@ -771,6 +828,7 @@ def default_project_dir():
 
 
 def default_platformio():
+    saved = str(load_settings().get("platformio_executable", "")).strip()
     executable = shutil.which("platformio") or shutil.which("pio")
     if sys.platform.startswith("win"):
         candidates = [
@@ -787,6 +845,8 @@ def default_platformio():
         ]
     if executable:
         candidates.insert(0, Path(executable))
+    if saved:
+        candidates.insert(0, Path(saved))
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
@@ -5005,6 +5065,7 @@ class FilesystemUploaderPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -5428,33 +5489,56 @@ class FirmwareUploadPage(Page):
         self.export_port_button.pack(side="right")
         action_buttons = tk.Frame(actions, bg=SURFACE)
         action_buttons.pack(fill="x")
-        self.flash_button = ttk.Button(action_buttons, text="Build + Flash FW + FS", style="Gold.TButton",
-                                       command=self.run_flash_workflow)
-        self.flash_button.pack(side="left")
-        self.upload_fw_button = ttk.Button(action_buttons, text="Upload firmware to this pedal", style="Dark.TButton",
-                                           command=self.run_firmware_upload_workflow)
-        self.upload_fw_button.pack(side="left", padx=(18, 0))
-        self.validate_fs_button = ttk.Button(action_buttons, text="Validate data", style="Dark.TButton",
-                                             command=self.validate_data)
-        self.validate_fs_button.pack(side="left", padx=(8, 0))
-        self.fs_button = ttk.Button(action_buttons, text="Build + Upload FS Only", style="Dark.TButton",
-                                    command=self.run_filesystem_workflow)
-        self.fs_button.pack(side="left", padx=(8, 0))
-        self.monitor_button = ttk.Button(action_buttons, text="Monitor", style="Dark.TButton",
-                                         command=self.run_monitor_workflow)
-        self.monitor_button.pack(side="left", padx=(8, 0))
-        self.stop_monitor_button = ttk.Button(action_buttons, text="Stop monitor", style="Dark.TButton",
-                                              command=self.stop_monitor)
-        self.stop_monitor_button.pack(side="left", padx=(8, 0))
+
+        def action_button(text, hint, style, command, side="left", padx=(8, 0)):
+            group = tk.Frame(action_buttons, bg=SURFACE)
+            group.pack(side=side, padx=padx)
+            tk.Label(
+                group,
+                text=f"({hint})" if hint else " ",
+                bg=SURFACE,
+                fg=MUTED,
+                font=("Segoe UI", 8),
+            ).pack(pady=(0, 3))
+            button = ttk.Button(group, text=text, style=style, command=command)
+            button.pack(fill="x")
+            return button
+
+        self.flash_button = action_button(
+            "Build + Flash FW + FS", "firmware + banks", "Gold.TButton",
+            self.run_flash_workflow, padx=(0, 0),
+        )
+        self.upload_fw_button = action_button(
+            "Upload firmware to this pedal", "firmware only", "Dark.TButton",
+            self.run_firmware_upload_workflow, padx=(18, 0),
+        )
+        self.validate_fs_button = action_button(
+            "Validate data", "checks preset data", "Dark.TButton", self.validate_data,
+        )
+        self.fs_button = action_button(
+            "Build + Upload FS Only", "updates banks only", "Dark.TButton",
+            self.run_filesystem_workflow,
+        )
+        self.monitor_button = action_button(
+            "Monitor", "", "Dark.TButton", self.run_monitor_workflow,
+        )
+        self.stop_monitor_button = action_button(
+            "Stop monitor", "", "Dark.TButton", self.stop_monitor,
+        )
         self.stop_monitor_button.configure(state="disabled")
-        ttk.Button(action_buttons, text="Terminal", style="Dark.TButton",
-                   command=self.show_terminal).pack(side="left", padx=(8, 0))
-        ttk.Button(action_buttons, text="Open project", style="Dark.TButton",
-                   command=lambda: open_folder(self.project_dir)).pack(side="right")
-        ttk.Button(action_buttons, text="Open data", style="Dark.TButton",
-                   command=self.open_data_folder).pack(side="right", padx=(0, 8))
-        ttk.Button(action_buttons, text="Open PresetList PDF", style="Dark.TButton",
-                   command=self.open_current_pdf).pack(side="right", padx=(0, 8))
+        action_button("Terminal", "", "Dark.TButton", self.show_terminal)
+        action_button(
+            "Open project", "", "Dark.TButton", lambda: open_folder(self.project_dir),
+            side="right", padx=(0, 0),
+        )
+        action_button(
+            "Open data", "", "Dark.TButton", self.open_data_folder,
+            side="right", padx=(0, 8),
+        )
+        action_button(
+            "Open PresetList PDF", "", "Dark.TButton", self.open_current_pdf,
+            side="right", padx=(0, 8),
+        )
 
         settings_section = tk.Frame(panel, bg=SURFACE)
         settings_section.pack(fill="x", padx=22, pady=(0, 14))
@@ -5844,6 +5928,7 @@ class FirmwareUploadPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -6085,7 +6170,7 @@ class FirmwareUploadPage(Page):
         text = self._config_text()
         self.config_path_var.set(str(path))
         self.fw_version_var.set(self._extract_const_value(text, "string", "VERSION", "\"\"").strip('"'))
-        for driver in ("OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309", "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107"):
+        for driver in OLED_DRIVER_DEFINES:
             if self._is_define_enabled(text, driver):
                 self.oled_driver_var.set(self.oled_driver_labels_by_define.get(driver, driver))
                 break
@@ -6277,8 +6362,7 @@ class FirmwareUploadPage(Page):
         text = self._set_string_const(text, "VERSION", firmware_version)
         if not selected_only or self.apply_screen_mod_var.get():
             selected_oled_driver = self.oled_driver_choices.get(self.oled_driver_var.get(), self.oled_driver_var.get())
-            for driver in ("OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309", "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107"):
-                text = self._set_define_enabled(text, driver, driver == selected_oled_driver)
+            text = normalize_oled_driver_definitions(text, selected_oled_driver)
         if not selected_only or self.apply_battery_mod_var.get():
             dual_battery_enabled = self._dual_battery_enabled()
             if dual_battery_enabled:
@@ -6328,14 +6412,17 @@ class FirmwareUploadPage(Page):
             expected_driver = self.oled_driver_choices.get(
                 self.oled_driver_var.get(), self.oled_driver_var.get()
             )
-            enabled_drivers = [
-                driver for driver in (
-                    "OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309",
-                    "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107",
+            driver_states = inspect_oled_driver_definitions(text)
+            driver_counts = {
+                driver: sum(name == driver for name, _enabled in driver_states)
+                for driver in OLED_DRIVER_DEFINES
+            }
+            enabled_drivers = [name for name, enabled in driver_states if enabled]
+            if any(count != 1 for count in driver_counts.values()):
+                problems.append(
+                    "OLED driver definitions are duplicated or missing; save the Firmware settings again"
                 )
-                if self._is_define_enabled(text, driver)
-            ]
-            if enabled_drivers != [expected_driver]:
+            elif enabled_drivers != [expected_driver]:
                 problems.append(
                     f"OLED driver is {', '.join(enabled_drivers) or '(none)'}, expected {expected_driver}"
                 )

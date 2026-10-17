@@ -1,6 +1,21 @@
-# Ignitron Preset Tools v2.1.03
+# Ignitron Preset Tools v2.1.04
 
-## Android Spark-app reconnect fix - 2026-10-13
+## v2.1.04 - Windows setup, clearer flashing, and SSD1309 cold starts - 2026-10-16
+
+- Added a per-user Windows Setup executable alongside the portable ZIP. It detects installer-based earlier versions, preserves IPT settings, backs up bundled firmware projects before upgrades, and keeps the installation folder selectable.
+- Added an optional Windows Programming Setup step that detects or installs Python and PlatformIO Core, reports CP210x serial support, and verifies firmware plus filesystem builds without erasing or flashing the pedal.
+- Added concise descriptions above the Firmware actions: `firmware + banks`, `firmware only`, `checks preset data`, and `updates banks only`.
+- Updated the application window, firmware version, native builders, installers, documentation, release workflow, and regression expectations to v2.1.04.
+
+## SSD1309 cold-start correction - 2026-10-16
+
+- The 2.42-inch SSD1309 path now generates a real active-low hardware reset pulse through GPIO5 and initializes the display at I2C address `0x3C` with `SSD1306_EXTERNALVCC`.
+- SSD1309 retains the Adafruit SSD1306-compatible display class but no longer shares SSD1306's charge-pump initialization branch or retries address `0x3D`.
+- SSD1306, SH1106, and SH1107 retain their prior reset/class behavior; GPIO5 is selected only when `OLED_DRIVER_SSD1309` is active.
+- IPT now rewrites OLED selection as one canonical four-driver block, removing duplicate or misplaced definitions and verifying that each driver appears exactly once before flashing.
+- Added regression coverage for the SSD1309 reset/power/address path, the bundled SH1106 default, and SSD1309 config regeneration. Physical validation passed repeated long power-off cold starts plus ordinary reset and short-cycle checks on the connected pedal.
+
+## v2.1.03 Android Spark-app reconnect fix - 2026-10-13
 
 - Added the Spark-compatible Classic Bluetooth audio/control records used by the current Android Spark app while preserving the pedal's serial data channel.
 - Reconnects the single saved bonded phone after a pedal restart; multiple stored phone bonds remain a deliberate manual-selection case.
