@@ -828,6 +828,7 @@ def default_project_dir():
 
 
 def default_platformio():
+    saved = str(load_settings().get("platformio_executable", "")).strip()
     executable = shutil.which("platformio") or shutil.which("pio")
     if sys.platform.startswith("win"):
         candidates = [
@@ -844,6 +845,8 @@ def default_platformio():
         ]
     if executable:
         candidates.insert(0, Path(executable))
+    if saved:
+        candidates.insert(0, Path(saved))
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
@@ -5062,6 +5065,7 @@ class FilesystemUploaderPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -5485,33 +5489,56 @@ class FirmwareUploadPage(Page):
         self.export_port_button.pack(side="right")
         action_buttons = tk.Frame(actions, bg=SURFACE)
         action_buttons.pack(fill="x")
-        self.flash_button = ttk.Button(action_buttons, text="Build + Flash FW + FS", style="Gold.TButton",
-                                       command=self.run_flash_workflow)
-        self.flash_button.pack(side="left")
-        self.upload_fw_button = ttk.Button(action_buttons, text="Upload firmware to this pedal", style="Dark.TButton",
-                                           command=self.run_firmware_upload_workflow)
-        self.upload_fw_button.pack(side="left", padx=(18, 0))
-        self.validate_fs_button = ttk.Button(action_buttons, text="Validate data", style="Dark.TButton",
-                                             command=self.validate_data)
-        self.validate_fs_button.pack(side="left", padx=(8, 0))
-        self.fs_button = ttk.Button(action_buttons, text="Build + Upload FS Only", style="Dark.TButton",
-                                    command=self.run_filesystem_workflow)
-        self.fs_button.pack(side="left", padx=(8, 0))
-        self.monitor_button = ttk.Button(action_buttons, text="Monitor", style="Dark.TButton",
-                                         command=self.run_monitor_workflow)
-        self.monitor_button.pack(side="left", padx=(8, 0))
-        self.stop_monitor_button = ttk.Button(action_buttons, text="Stop monitor", style="Dark.TButton",
-                                              command=self.stop_monitor)
-        self.stop_monitor_button.pack(side="left", padx=(8, 0))
+
+        def action_button(text, hint, style, command, side="left", padx=(8, 0)):
+            group = tk.Frame(action_buttons, bg=SURFACE)
+            group.pack(side=side, padx=padx)
+            tk.Label(
+                group,
+                text=f"({hint})" if hint else " ",
+                bg=SURFACE,
+                fg=MUTED,
+                font=("Segoe UI", 8),
+            ).pack(pady=(0, 3))
+            button = ttk.Button(group, text=text, style=style, command=command)
+            button.pack(fill="x")
+            return button
+
+        self.flash_button = action_button(
+            "Build + Flash FW + FS", "firmware + banks", "Gold.TButton",
+            self.run_flash_workflow, padx=(0, 0),
+        )
+        self.upload_fw_button = action_button(
+            "Upload firmware to this pedal", "firmware only", "Dark.TButton",
+            self.run_firmware_upload_workflow, padx=(18, 0),
+        )
+        self.validate_fs_button = action_button(
+            "Validate data", "checks preset data", "Dark.TButton", self.validate_data,
+        )
+        self.fs_button = action_button(
+            "Build + Upload FS Only", "updates banks only", "Dark.TButton",
+            self.run_filesystem_workflow,
+        )
+        self.monitor_button = action_button(
+            "Monitor", "", "Dark.TButton", self.run_monitor_workflow,
+        )
+        self.stop_monitor_button = action_button(
+            "Stop monitor", "", "Dark.TButton", self.stop_monitor,
+        )
         self.stop_monitor_button.configure(state="disabled")
-        ttk.Button(action_buttons, text="Terminal", style="Dark.TButton",
-                   command=self.show_terminal).pack(side="left", padx=(8, 0))
-        ttk.Button(action_buttons, text="Open project", style="Dark.TButton",
-                   command=lambda: open_folder(self.project_dir)).pack(side="right")
-        ttk.Button(action_buttons, text="Open data", style="Dark.TButton",
-                   command=self.open_data_folder).pack(side="right", padx=(0, 8))
-        ttk.Button(action_buttons, text="Open PresetList PDF", style="Dark.TButton",
-                   command=self.open_current_pdf).pack(side="right", padx=(0, 8))
+        action_button("Terminal", "", "Dark.TButton", self.show_terminal)
+        action_button(
+            "Open project", "", "Dark.TButton", lambda: open_folder(self.project_dir),
+            side="right", padx=(0, 0),
+        )
+        action_button(
+            "Open data", "", "Dark.TButton", self.open_data_folder,
+            side="right", padx=(0, 8),
+        )
+        action_button(
+            "Open PresetList PDF", "", "Dark.TButton", self.open_current_pdf,
+            side="right", padx=(0, 8),
+        )
 
         settings_section = tk.Frame(panel, bg=SURFACE)
         settings_section.pack(fill="x", padx=22, pady=(0, 14))
@@ -5901,6 +5928,7 @@ class FirmwareUploadPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            update_settings(platformio_executable=filename)
 
     def load_project_defaults(self):
         saved_mods = load_settings()

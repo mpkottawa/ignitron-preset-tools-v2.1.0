@@ -62,6 +62,7 @@ SOURCE_FILES = (
     "Linux-Install-Guide.pdf",
     "README.md",
     "RELEASE_NOTES.md",
+    "WINDOWS-INSTALL-GUIDE.md",
     "Run IPT 2.1.bat",
     "Run IPT 2.1.command",
     "build_release.ps1",
@@ -85,6 +86,8 @@ SOURCE_FILES = (
     "test_linux_workflows.py",
     "test_linux_setup.py",
     "uninstall_linux.sh",
+    "windows_installer.iss",
+    "windows_programming_setup.ps1",
 )
 SOURCE_DIRECTORIES = (".github", "reference", "docs")
 FIRMWARE_PROJECTS = (

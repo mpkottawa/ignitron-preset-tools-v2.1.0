@@ -11,7 +11,7 @@ Ignitron Preset Tools (IPT) is a desktop control center for building Ignitron pr
 
 | Platform | Native release | Serial device example | Status |
 |---|---|---|---|
-| Windows 10/11 x64 | ZIP containing `.exe` | `COM7` | Primary, tested |
+| Windows 10/11 x64 | Setup `.exe` and portable ZIP | `COM7` | Primary, tested |
 | macOS Apple Silicon | ZIP containing `.app` | `/dev/cu.usbserial-*` | Native CI build |
 | macOS Intel | ZIP containing `.app` | `/dev/cu.usbserial-*` | Native CI build |
 | Linux x64 | `.tar.gz` with user installer | `/dev/ttyUSB0` | Native CI build |
@@ -32,7 +32,21 @@ Both projects are sanitized for release: saved host serial ports, build caches, 
 
 ### Windows
 
-Download `Ignitron.Preset.Tools.v2.1.03.Windows-x64.zip`, extract it, and run `Ignitron Preset Tools v2.1.03.exe`. If Windows SmartScreen appears on the unsigned build, choose **More info > Run anyway**.
+Beginning with the next release, download the `Windows-x64-Setup.exe` asset and run it. This is the recommended Windows package. It installs IPT for the current user without administrator access, creates Start-menu shortcuts, and offers to run **Windows Programming Setup** after installation. When another installer-based IPT version is present, Setup shows its version and location and updates the application there. The destination-folder page always remains available, shared IPT settings are preserved, and bundled firmware folders are moved into a timestamped `firmware backups` folder before fresh copies are installed.
+
+Windows Programming Setup:
+
+1. Checks for a supported Python runtime and PlatformIO Core.
+2. Offers to install missing Python and PlatformIO components for the current user from their official sources. Downloads are version-pinned and SHA-256 verified.
+3. Checks Windows USB serial/CP210x detection. If the pedal needs a driver, it directs you to the official Silicon Labs CP210x VCP driver page; that signed driver may require administrator approval.
+4. Saves the verified PlatformIO executable for IPT while preserving an existing firmware-folder selection.
+5. Builds the included firmware and filesystem as a final check. This may take several minutes on first use, but it does **not** erase or flash the pedal.
+
+After **Windows programming setup is ready** appears, open IPT, review **Firmware > Hardware** and the display driver, connect the pedal, and use **Build + Flash FW + FS**. Flashing is always a separate user action inside IPT.
+
+The portable ZIP remains available. Extract the whole ZIP before running its `.exe`; do not run it from inside the archive. To prepare programming from the portable package, right-click `windows_programming_setup.ps1`, choose **Run with PowerShell**, and follow the prompts. Rerun **Windows Programming Setup** from the Start menu at any time to repair or verify the toolchain. Logs are saved under `%LOCALAPPDATA%\Ignitron Preset Tools\Logs`.
+
+If Windows SmartScreen appears on an unsigned IPT build, choose **More info > Run anyway**. See [WINDOWS-INSTALL-GUIDE.md](WINDOWS-INSTALL-GUIDE.md) for troubleshooting and manual checks. The existing v2.1.03 release remains ZIP-only; the Setup executable is produced by the updated release workflow.
 
 ### macOS
 
@@ -292,6 +306,8 @@ The builders:
 - stage both the sanitized IPT v2.1.03 firmware project and the Ignitron 1.9.0 fallback, with preset data but no saved host serial port;
 - run a privacy check against the finished package;
 - name the archive with its operating system and CPU architecture.
+
+The Windows builder additionally requires [Inno Setup 6](https://jrsoftware.org/isinfo.php). It produces both the portable ZIP and a per-user Setup executable, and validates the programming-setup helper before packaging. GitHub's Windows release job installs the Setup executable silently into a temporary folder, verifies its application, firmware and helper files, runs the helper self-test, and uninstalls it again.
 
 `build_release_mac.sh` creates an `.icns` icon from `IPT.ico`. Set `MACOS_CODESIGN_IDENTITY` to a Developer ID Application identity when building a signed Mac app. Notarization still requires the normal Apple credential submission after signing.
 
