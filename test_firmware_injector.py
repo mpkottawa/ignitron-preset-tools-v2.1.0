@@ -301,8 +301,11 @@ const bool ENABLE_FX_BLINK = false;
     def test_blocklist_combo_has_one_owner_and_reports_amp_link_state(self):
         buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")
         bt_source = (TEMPLATE / "src/SparkBTControl.cpp").read_text(errors="replace")
+        data_source = (TEMPLATE / "src/SparkDataControl.cpp").read_text(errors="replace")
         self.assertEqual(1, buttons.count("spark_dc_->blockCurrentAmp();"))
         self.assertIn("AMP_DIAG cached=%d live=%d", bt_source)
+        self.assertIn('LittleFS.mkdir(configDirectory)', bt_source)
+        self.assertIn('"BLOCK SAVE FAILED"', data_source)
 
     def test_blocklist_exit_restart_waits_for_button_release(self):
         buttons = (TEMPLATE / "src/SparkButtonHandler.cpp").read_text(errors="replace")

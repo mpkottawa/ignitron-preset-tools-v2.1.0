@@ -442,6 +442,15 @@ bool SparkBTControl::saveBlockedAmps() {
                LittleFS.remove(blockedAmpFileName_.c_str());
     }
 
+    // A freshly uploaded filesystem does not contain the runtime config
+    // directory. LittleFS.open() cannot create missing parent directories.
+    const char *configDirectory = "/config";
+    if (!LittleFS.exists(configDirectory) &&
+        !LittleFS.mkdir(configDirectory)) {
+        Serial.println("Cannot create blocked amp config directory.");
+        return false;
+    }
+
     File file = LittleFS.open(blockedAmpFileName_.c_str(), FILE_WRITE);
     if (!file) {
         return false;
