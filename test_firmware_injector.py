@@ -162,7 +162,7 @@ const bool ENABLE_FX_BLINK = false;
             source.mkdir(parents=True)
             config = source / "Config_Definitions.h"
             config.write_text(
-                'const string VERSION = "2.1.03";\n'
+                'const string VERSION = "2.1.04";\n'
                 '// #define OLED_DRIVER_SSD1306\n'
                 '#define OLED_DRIVER_SH1106\n'
                 '// #define OLED_DRIVER_SH1107\n'
@@ -173,7 +173,7 @@ const bool ENABLE_FX_BLINK = false;
 
             page = object.__new__(IPT.FirmwareUploadPage)
             page.project_var = variable(str(project))
-            page.fw_version_var = variable("2.1.03")
+            page.fw_version_var = variable("2.1.04")
             page.apply_screen_mod_var = variable(True)
             page.apply_battery_mod_var = variable(False)
             page.apply_timing_mod_var = variable(False)
@@ -1600,19 +1600,19 @@ class CrossPlatformReleaseTests(unittest.TestCase):
             self.assertIn(f'"{hint}"', source)
 
     def test_public_release_versions_agree(self):
-        self.assertEqual("2.1.03", IPT.APP_VERSION)
+        self.assertEqual("2.1.04", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
         for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
-            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.03"')
-        self.assertIn('VERSION = "2.1.03"', (root / "Ignitron/src/Config_Definitions.h").read_text())
-        self.assertIn('Name=Ignitron Preset Tools 2.1.03', (root / "install_linux.sh").read_text())
-        self.assertIn('RELEASE_VERSION="2.1.03"', (root / "setup_linux.sh").read_text())
-        self.assertIn('# Ignitron Preset Tools 2.1.03', (root / "README.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "GITHUB_RELEASE.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.03', (root / "RELEASE_NOTES.md").read_text())
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.04"')
+        self.assertIn('VERSION = "2.1.04"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.04', (root / "install_linux.sh").read_text())
+        self.assertIn('RELEASE_VERSION="2.1.04"', (root / "setup_linux.sh").read_text())
+        self.assertIn('# Ignitron Preset Tools 2.1.04', (root / "README.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.04', (root / "GITHUB_RELEASE.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.04', (root / "RELEASE_NOTES.md").read_text())
         workflow = (root / ".github/workflows/build-release.yml").read_text()
         for platform in ("Windows", "Linux", "macOS"):
-            self.assertIn(f"Ignitron-Preset-Tools-v2.1.03-{platform}", workflow)
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.04-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")
