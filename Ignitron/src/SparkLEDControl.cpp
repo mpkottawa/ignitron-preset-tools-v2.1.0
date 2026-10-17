@@ -254,12 +254,22 @@ void SparkLEDControl::allLedOff() {
 }
 
 void SparkLEDControl::writeLed(int gpio, bool on) {
-    if (gpio == LED_GPIO_INVALID) {
+    if (gpio == LED_GPIO_INVALID || gpio < 0 || gpio >= LED_GPIO_CACHE_SIZE) {
         return;
     }
     const int brightnessPercent = constrain(LED_BRIGHTNESS_PERCENT, 0, 100);
-    const int pwmDuty = (brightnessPercent * 255 + 50) / 100;
-    analogWrite(gpio, on ? pwmDuty : 0);
+    const uint8_t pwmDuty =
+        on ? (brightnessPercent * 255 + 50) / 100 : 0;
+
+    // analogWrite() configures ESP32 LEDC. Reapplying the same duty every
+    // pass can restart or disturb PWM often enough to create visible flicker.
+    // Touch the hardware only when this GPIO's requested duty actually changes.
+    if (ledDutyInitialized_[gpio] && lastLedDuty_[gpio] == pwmDuty) {
+        return;
+    }
+    analogWrite(gpio, pwmDuty);
+    lastLedDuty_[gpio] = pwmDuty;
+    ledDutyInitialized_[gpio] = true;
 }
 
 void SparkLEDControl::switchLed(int num, bool on, bool fxMode) {

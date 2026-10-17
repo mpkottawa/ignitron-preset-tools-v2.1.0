@@ -47,6 +47,9 @@ private:
     const long blinkInterval_ms = 200; // blinkInterval_ms at which to blink (milliseconds)
     long tapBlinkInterval_ms = 250;
     bool blinkInvert = false; // Remember state of blink inversion
+    static const int LED_GPIO_CACHE_SIZE = 40;
+    bool ledDutyInitialized_[LED_GPIO_CACHE_SIZE] = {};
+    uint8_t lastLedDuty_[LED_GPIO_CACHE_SIZE] = {};
 
     void updateLedAppPresetMode();
     void updateLedAppFXMode();

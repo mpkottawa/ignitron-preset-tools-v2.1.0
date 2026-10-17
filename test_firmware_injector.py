@@ -353,7 +353,9 @@ const bool ENABLE_FX_BLINK = false;
         config_source = (TEMPLATE / "src/Config_Definitions.h").read_text(errors="replace")
         app_source = (ROOT / "ignitron_preset_tools_v2.1.py").read_text(errors="replace")
         self.assertIn("LED_BRIGHTNESS_PERCENT = 100", config_source)
-        self.assertIn("analogWrite(gpio, on ? pwmDuty : 0)", led_source)
+        self.assertIn("analogWrite(gpio, pwmDuty)", led_source)
+        self.assertIn("lastLedDuty_[gpio] == pwmDuty", led_source)
+        self.assertIn("ledDutyInitialized_[gpio] = true", led_source)
         self.assertIn("LED brightness %", app_source)
 
         with tempfile.TemporaryDirectory() as temp:
