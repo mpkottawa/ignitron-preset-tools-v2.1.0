@@ -12,6 +12,8 @@ For Android reconnects, the pedal now exposes the Spark-compatible Classic Bluet
 
 The release default is the SH1106 1.3-inch OLED. Before flashing, review the Firmware and Hardware tabs if your pedal uses a different display, GPIO mapping, or battery wiring. **Build + Flash FW + FS** saves and verifies the values shown in IPT before compiling.
 
+For a 2.42-inch SSD1309 I2C display, select **OLED_DRIVER_SSD1309 - 2.42 inch**. The supported wiring is address `0x3C`, SDA GPIO21, SCL GPIO22, and the display's active-low RES input on GPIO5. Only the SSD1309 selection drives GPIO5: startup uses the Adafruit SSD1306-compatible command path with `SSD1306_EXTERNALVCC` and generates a hardware reset pulse before initialization. SSD1306, SH1106, and SH1107 continue to use their existing reset and power behavior.
+
 ### `Ignitron 1.9.0`
 
 This is the Ignitron 1.9.0 fallback project. Its firmware source is retained for users who want the earlier release or need a clean recovery point. Release staging removes saved computer-specific serial ports and resets its runtime mode files to normal APP/BLE startup; it does not add IPT v2.1 support.
@@ -51,4 +53,5 @@ If you run these diagnostics, both commands must report `SUCCESS`. The combined 
 - Back up a custom preset library before replacing it.
 - Do not use another pedal's battery-divider or GPIO values without checking the hardware.
 - If a display is blank after flashing, select the correct OLED driver and flash the firmware again.
+- If an SSD1309 shows vertical bars, static, or cold-start flicker, confirm its RES lead is physically connected to GPIO5 and that IPT saved exactly one active OLED driver definition.
 

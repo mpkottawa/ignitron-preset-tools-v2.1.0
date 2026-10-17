@@ -100,6 +100,7 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
     def test_required_template_has_transfer_safety_fixes(self):
         source = (TEMPLATE / "Ignitron.ino").read_text(errors="replace")
         config = (TEMPLATE / "src/Config_Definitions.h").read_text(errors="replace")
+        display = (TEMPLATE / "src/SparkDisplayControl.cpp").read_text(errors="replace")
         self.assertIn("ERR BAD_BASE64_LENGTH", source)
         self.assertIn("ERR CHECKSUM_MISMATCH", source)
         self.assertIn("ERR SIZE_OVERFLOW", source)
@@ -107,6 +108,97 @@ class RequiredFirmwareInjectionTests(unittest.TestCase):
         self.assertNotIn("ENABLE_AMP_MODE_ROCKER_SWITCH", source)
         self.assertRegex(config, r"(?m)^#define OLED_DRIVER_SH1106\s*$")
         self.assertNotRegex(config, r"(?m)^#define OLED_DRIVER_SSD1306\s*$")
+        self.assertEqual(
+            [
+                ("OLED_DRIVER_SSD1306", False),
+                ("OLED_DRIVER_SSD1309", False),
+                ("OLED_DRIVER_SH1106", True),
+                ("OLED_DRIVER_SH1107", False),
+            ],
+            IPT.inspect_oled_driver_definitions(config),
+        )
+        self.assertIn("#if defined(OLED_DRIVER_SSD1309)\nconst int SparkDisplayControl::OLED_RESET = 5;", display)
+        self.assertIn("display_.begin(SSD1306_EXTERNALVCC, 0x3C)", display)
+        self.assertIn("#elif defined(OLED_DRIVER_SSD1306)", display)
+        self.assertIn("display_.begin(SSD1306_SWITCHCAPVCC, 0x3C)", display)
+        self.assertNotIn("display_.begin(SSD1306_EXTERNALVCC, 0x3D)", display)
+        self.assertNotIn("display_.begin(SSD1306_SWITCHCAPVCC, 0x3D)", display)
+
+    def test_ssd1309_selection_rewrites_one_canonical_driver_block(self):
+        original = """// OLED Driver config
+// #define OLED_DRIVER_SSD1306
+#define OLED_DRIVER_SH1106
+// #define OLED_DRIVER_SH1107
+const bool ENABLE_FX_BLINK = false;
+// #define OLED_DRIVER_SSD1309
+#define OLED_DRIVER_SH1106
+#endif
+"""
+        updated = IPT.normalize_oled_driver_definitions(
+            original, "OLED_DRIVER_SSD1309")
+        expected = """// #define OLED_DRIVER_SSD1306
+#define OLED_DRIVER_SSD1309
+// #define OLED_DRIVER_SH1106
+// #define OLED_DRIVER_SH1107
+"""
+        self.assertIn(expected, updated)
+        self.assertEqual(
+            [
+                ("OLED_DRIVER_SSD1306", False),
+                ("OLED_DRIVER_SSD1309", True),
+                ("OLED_DRIVER_SH1106", False),
+                ("OLED_DRIVER_SH1107", False),
+            ],
+            IPT.inspect_oled_driver_definitions(updated),
+        )
+
+    def test_firmware_tab_saves_and_verifies_one_ssd1309_definition(self):
+        def variable(value):
+            return SimpleNamespace(get=lambda current=value: current)
+
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "Ignitron"
+            source = project / "src"
+            source.mkdir(parents=True)
+            config = source / "Config_Definitions.h"
+            config.write_text(
+                'const string VERSION = "2.1.03";\n'
+                '// #define OLED_DRIVER_SSD1306\n'
+                '#define OLED_DRIVER_SH1106\n'
+                '// #define OLED_DRIVER_SH1107\n'
+                '// #define OLED_DRIVER_SSD1309\n'
+                '#endif\n',
+                encoding="utf-8",
+            )
+
+            page = object.__new__(IPT.FirmwareUploadPage)
+            page.project_var = variable(str(project))
+            page.fw_version_var = variable("2.1.03")
+            page.apply_screen_mod_var = variable(True)
+            page.apply_battery_mod_var = variable(False)
+            page.apply_timing_mod_var = variable(False)
+            page.apply_amp_blocklist_mod_var = variable(False)
+            page.apply_led_mod_var = variable(False)
+            page.apply_hardware_pins_var = variable(False)
+            page.oled_driver_choices = {
+                "OLED_DRIVER_SSD1309 - 2.42 inch": "OLED_DRIVER_SSD1309",
+            }
+            page.oled_driver_var = variable("OLED_DRIVER_SSD1309 - 2.42 inch")
+            page.app = SimpleNamespace(set_status=lambda _message: None)
+            page.append_log = lambda _message: None
+
+            self.assertTrue(page.save_firmware_settings(show_message=False))
+            saved = config.read_text(encoding="utf-8")
+            self.assertEqual(
+                [
+                    ("OLED_DRIVER_SSD1306", False),
+                    ("OLED_DRIVER_SSD1309", True),
+                    ("OLED_DRIVER_SH1106", False),
+                    ("OLED_DRIVER_SH1107", False),
+                ],
+                IPT.inspect_oled_driver_definitions(saved),
+            )
+            self.assertTrue(page.verify_selected_firmware_settings())
 
     def test_bluetooth_reconnect_debug_and_graceful_restart_are_installed(self):
         bt_header = (TEMPLATE / "src/SparkBTControl.h").read_text(errors="replace")

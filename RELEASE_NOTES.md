@@ -1,5 +1,13 @@
 # Ignitron Preset Tools v2.1.03
 
+## SSD1309 cold-start correction - 2026-10-16
+
+- The 2.42-inch SSD1309 path now generates a real active-low hardware reset pulse through GPIO5 and initializes the display at I2C address `0x3C` with `SSD1306_EXTERNALVCC`.
+- SSD1309 retains the Adafruit SSD1306-compatible display class but no longer shares SSD1306's charge-pump initialization branch or retries address `0x3D`.
+- SSD1306, SH1106, and SH1107 retain their prior reset/class behavior; GPIO5 is selected only when `OLED_DRIVER_SSD1309` is active.
+- IPT now rewrites OLED selection as one canonical four-driver block, removing duplicate or misplaced definitions and verifying that each driver appears exactly once before flashing.
+- Added regression coverage for the SSD1309 reset/power/address path, the bundled SH1106 default, and SSD1309 config regeneration. Physical validation requires three 30–60 second power-off cold starts plus ordinary reset and short-cycle checks.
+
 ## Android Spark-app reconnect fix - 2026-10-13
 
 - Added the Spark-compatible Classic Bluetooth audio/control records used by the current Android Spark app while preserving the pedal's serial data channel.

@@ -16,7 +16,11 @@ const int OLED_I2C_IDLE_HZ = 100000;
 
 const int SparkDisplayControl::SCREEN_WIDTH = 128;         // Display width
 const int SparkDisplayControl::SCREEN_HEIGHT = 64;         // Display height
+#if defined(OLED_DRIVER_SSD1309)
+const int SparkDisplayControl::OLED_RESET = 5;             // SSD1309 hardware reset (active low)
+#else
 const int SparkDisplayControl::OLED_RESET = -1;            // Reset pin # (or -1 if sharing Arduino reset pin)
+#endif
 const int SparkDisplayControl::DISPLAY_MIN_X_FACTOR = -12; // for text size 2, scales linearly with text size
 
 #if defined(OLED_DRIVER_SSD1306) || defined(OLED_DRIVER_SSD1309)
@@ -60,18 +64,17 @@ void SparkDisplayControl::init(int mode) {
     // to finish power-up; otherwise they may show a striped/garbled buffer.
     delay(250);
 
-#if defined(OLED_DRIVER_SSD1306) || defined(OLED_DRIVER_SSD1309)
-    // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally.
-    // SSD1309 128x64 I2C modules use the same command path in Adafruit_SSD1306.
-    if (!display_.begin(SSD1306_SWITCHCAPVCC, 0x3C) &&
-        !display_.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-        Serial.println(F(
 #if defined(OLED_DRIVER_SSD1309)
-            "SSD1309 initialization failed"
-#else
-            "SSD1306 initialization failed"
-#endif
-        ));
+    // Adafruit_SSD1306 is command-compatible with SSD1309. Passing GPIO5 to
+    // its constructor makes begin() generate the required active-low reset pulse.
+    if (!display_.begin(SSD1306_EXTERNALVCC, 0x3C)) {
+        Serial.println(F("SSD1309 initialization failed"));
+        for (;;)
+            ; // Loop forever
+    }
+#elif defined(OLED_DRIVER_SSD1306)
+    if (!display_.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 initialization failed"));
         for (;;)
             ; // Loop forever
     }

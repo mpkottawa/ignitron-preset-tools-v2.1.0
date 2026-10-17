@@ -42,6 +42,12 @@ APP_VERSION = "2.1.03"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
+OLED_DRIVER_DEFINES = (
+    "OLED_DRIVER_SSD1306",
+    "OLED_DRIVER_SSD1309",
+    "OLED_DRIVER_SH1106",
+    "OLED_DRIVER_SH1107",
+)
 REMOTE_TERMINAL_EASTER_EGG_TRIGGER = "ROCK ON"
 REMOTE_TERMINAL_EASTER_EGG_ART_FILE = "Ignitron preset tools logo ASCII 120x60.txt"
 REMOTE_TERMINAL_EASTER_EGG_ART = r"""
@@ -179,6 +185,57 @@ IPT_ADDON_MARKERS = (
     ("src/SparkDataControl.h", "Spark HW store API", "storeHWPreset"),
     ("src/SparkLEDControl.cpp", "safe startup LED initialization", "void SparkLEDControl::begin()"),
 )
+
+
+def normalize_oled_driver_definitions(text, selected_driver):
+    """Write one canonical OLED-driver block and remove stray duplicates."""
+    if selected_driver not in OLED_DRIVER_DEFINES:
+        raise ValueError(f"Unsupported OLED driver: {selected_driver}")
+
+    newline = "\r\n" if "\r\n" in text else "\n"
+    names = "|".join(re.escape(name) for name in OLED_DRIVER_DEFINES)
+    pattern = re.compile(
+        rf"^[ \t]*(?://[ \t]*)?#define[ \t]+(?:{names})\b[^\r\n]*(?:\r?\n|$)",
+        re.MULTILINE,
+    )
+    matches = list(pattern.finditer(text))
+    canonical = "".join(
+        (f"#define {name}" if name == selected_driver else f"// #define {name}")
+        + newline
+        for name in OLED_DRIVER_DEFINES
+    )
+
+    if matches:
+        parts = []
+        cursor = 0
+        for index, match in enumerate(matches):
+            parts.append(text[cursor:match.start()])
+            if index == 0:
+                parts.append(canonical)
+            cursor = match.end()
+        parts.append(text[cursor:])
+        return "".join(parts)
+
+    final_endif = text.rfind("#endif")
+    if final_endif < 0:
+        separator = "" if not text or text.endswith(("\n", "\r")) else newline
+        return text + separator + canonical
+    prefix = text[:final_endif]
+    separator = "" if not prefix or prefix.endswith(("\n", "\r")) else newline
+    return prefix + separator + canonical + text[final_endif:]
+
+
+def inspect_oled_driver_definitions(text):
+    """Return (driver, enabled) for every OLED driver line in file order."""
+    names = "|".join(re.escape(name) for name in OLED_DRIVER_DEFINES)
+    pattern = re.compile(
+        rf"^[ \t]*(?P<comment>//[ \t]*)?#define[ \t]+(?P<name>{names})\b[^\r\n]*$",
+        re.MULTILINE,
+    )
+    return [
+        (match.group("name"), match.group("comment") is None)
+        for match in pattern.finditer(text)
+    ]
 
 BG = "#0d0e12"
 SURFACE = "#15171d"
@@ -6085,7 +6142,7 @@ class FirmwareUploadPage(Page):
         text = self._config_text()
         self.config_path_var.set(str(path))
         self.fw_version_var.set(self._extract_const_value(text, "string", "VERSION", "\"\"").strip('"'))
-        for driver in ("OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309", "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107"):
+        for driver in OLED_DRIVER_DEFINES:
             if self._is_define_enabled(text, driver):
                 self.oled_driver_var.set(self.oled_driver_labels_by_define.get(driver, driver))
                 break
@@ -6277,8 +6334,7 @@ class FirmwareUploadPage(Page):
         text = self._set_string_const(text, "VERSION", firmware_version)
         if not selected_only or self.apply_screen_mod_var.get():
             selected_oled_driver = self.oled_driver_choices.get(self.oled_driver_var.get(), self.oled_driver_var.get())
-            for driver in ("OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309", "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107"):
-                text = self._set_define_enabled(text, driver, driver == selected_oled_driver)
+            text = normalize_oled_driver_definitions(text, selected_oled_driver)
         if not selected_only or self.apply_battery_mod_var.get():
             dual_battery_enabled = self._dual_battery_enabled()
             if dual_battery_enabled:
@@ -6328,14 +6384,17 @@ class FirmwareUploadPage(Page):
             expected_driver = self.oled_driver_choices.get(
                 self.oled_driver_var.get(), self.oled_driver_var.get()
             )
-            enabled_drivers = [
-                driver for driver in (
-                    "OLED_DRIVER_SSD1306", "OLED_DRIVER_SSD1309",
-                    "OLED_DRIVER_SH1106", "OLED_DRIVER_SH1107",
+            driver_states = inspect_oled_driver_definitions(text)
+            driver_counts = {
+                driver: sum(name == driver for name, _enabled in driver_states)
+                for driver in OLED_DRIVER_DEFINES
+            }
+            enabled_drivers = [name for name, enabled in driver_states if enabled]
+            if any(count != 1 for count in driver_counts.values()):
+                problems.append(
+                    "OLED driver definitions are duplicated or missing; save the Firmware settings again"
                 )
-                if self._is_define_enabled(text, driver)
-            ]
-            if enabled_drivers != [expected_driver]:
+            elif enabled_drivers != [expected_driver]:
                 problems.append(
                     f"OLED driver is {', '.join(enabled_drivers) or '(none)'}, expected {expected_driver}"
                 )
