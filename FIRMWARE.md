@@ -4,7 +4,7 @@ Every IPT v2.1.04 desktop package includes two complete PlatformIO projects. The
 
 ## Which folder should I use?
 
-### `ignitron firmware` (native packages) or `Ignitron` (source release)
+### `ignitron firmware` (native packages) or `Ignitron 1.9.0` (source release)
 
 This is the ready-to-build IPT v2.1.04 firmware and the normal choice for this release. It includes the serial protocol used by Pedal Remote and Spark Capture, Android Spark-app reconnect support, software-controlled capture mode, the multi-amp blocklist, Spark 2 battery support, the dedicated-preset-LED flicker fix, the SSD1309 cold-start correction, the prepared preset library, and all current fixes.
 
