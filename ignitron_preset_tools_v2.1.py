@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ignitron Preset Tools v2.1.04 - desktop control center."""
+"""Ignitron Preset Tools v2.1.05 - desktop control center."""
 
 import contextlib
 import ast
@@ -20,6 +20,7 @@ import threading
 import time
 import tkinter as tk
 import wave
+import zipfile
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from preset_capture import PresetCaptureDecoder, save_captured_preset
@@ -38,9 +39,11 @@ _VLC_IMPORT_ERROR = None
 
 
 APP_NAME = "Ignitron Preset Tools"
-APP_VERSION = "2.1.04"
+APP_VERSION = "2.1.05"
 APP_SLUG = "ignitron-preset-tools"
 DEFAULT_UPLOAD_SPEED = "460800"
+DEFAULT_PRESET_BANKS = 30
+MAX_PRESET_BANKS = 69
 DEFAULT_OLED_DRIVER_DEFINE = "OLED_DRIVER_SH1106"
 OLED_DRIVER_DEFINES = (
     "OLED_DRIVER_SSD1306",
@@ -1812,6 +1815,40 @@ def preset_list_missing_files(data_dir):
     return missing
 
 
+def parse_preset_list_banks(preset_list):
+    """Return the bank rows saved in an Ignitron PresetList.txt file."""
+    preset_list = Path(preset_list)
+    if not preset_list.exists():
+        return []
+
+    banks = {}
+    current_bank = None
+    ungrouped = []
+    for raw_line in preset_list.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        header = re.match(r"^--\s*Bank\s+(\d+)\s*$", line, flags=re.IGNORECASE)
+        if header:
+            current_bank = max(1, int(header.group(1)))
+            banks.setdefault(current_bank, [])
+            continue
+        if line.startswith("--"):
+            continue
+        if current_bank is None:
+            ungrouped.append(line)
+        else:
+            banks.setdefault(current_bank, []).append(line)
+
+    if not banks and ungrouped:
+        for index in range(0, len(ungrouped), 4):
+            banks[(index // 4) + 1] = ungrouped[index:index + 4]
+    if not banks:
+        return []
+
+    return [banks.get(bank, [])[:4] for bank in range(1, max(banks) + 1)]
+
+
 def generate_preset_chart(data_dir):
     def write_simple_pdf(output_path, rows):
         def pdf_escape(value):
@@ -2900,10 +2937,11 @@ class BuilderPage(Page):
     def __init__(self, parent, app):
         super().__init__(parent, app)
         self.library_folder = None
+        self.library_folders = []
         self.output_folder = self.app.data_dir
         self.presets = []
         self.filtered = []
-        self.bank_count = 30
+        self.bank_count = DEFAULT_PRESET_BANKS
         self.bank_count_var = tk.IntVar(value=self.bank_count)
         self.slots = {(b, s): None for b in range(1, self.bank_count + 1) for s in range(1, 5)}
         self.slot_widgets = {}
@@ -2953,7 +2991,7 @@ class BuilderPage(Page):
                  font=("Segoe UI", 8)).pack(anchor="w", padx=18, pady=12)
         actions = tk.Frame(library, bg=SURFACE)
         actions.pack(fill="x", padx=18, pady=(0, 18))
-        ttk.Button(actions, text="Choose other library", style="Dark.TButton",
+        ttk.Button(actions, text="Add another library", style="Dark.TButton",
                    command=self.choose_library_folder).pack(fill="x", pady=(0, 5))
         ttk.Button(actions, text="Fill empty", style="Dark.TButton", command=self.fill_empty).pack(fill="x", pady=3)
         ttk.Button(actions, text="Clear all", style="Dark.TButton", command=self.clear_all).pack(fill="x", pady=3)
@@ -2971,7 +3009,7 @@ class BuilderPage(Page):
         tk.Label(bank_selector, text="BANKS", bg=SURFACE, fg=MUTED,
                  font=("Segoe UI Semibold", 8)).pack(side="left", padx=(0, 7))
         self.bank_spinbox = ttk.Spinbox(
-            bank_selector, from_=1, to=30, width=4, justify="center",
+            bank_selector, from_=1, to=MAX_PRESET_BANKS, width=4, justify="center",
             textvariable=self.bank_count_var, command=self.apply_bank_count
         )
         self.bank_spinbox.pack(side="left")
@@ -2985,6 +3023,8 @@ class BuilderPage(Page):
                    command=self.open_current_pdf).pack(side="right", padx=8)
         ttk.Button(toolbar, text="Export files", style="Dark.TButton",
                    command=self.export).pack(side="right", padx=8)
+        ttk.Button(toolbar, text="Back up data", style="Dark.TButton",
+                   command=self.backup_data_folder).pack(side="right", padx=8)
         ttk.Button(toolbar, text="Add bank", style="Dark.TButton", command=self.add_bank).pack(side="right", padx=8)
 
         canvas_wrap = tk.Frame(workspace, bg=SURFACE)
@@ -3003,10 +3043,10 @@ class BuilderPage(Page):
 
     def choose_library_folder(self):
         initial = load_saved_path("preset_library_folder") or self.app.data_dir
-        folder = filedialog.askdirectory(title="Select your main preset library", initialdir=str(initial))
+        folder = filedialog.askdirectory(title="Add a preset library folder", initialdir=str(initial))
         if not folder:
             return
-        self.load_library_folder(Path(folder))
+        self.load_library_folder(Path(folder), replace=False)
 
     def load_project_data(self, show_message=True):
         self.output_folder = self.app.data_dir
@@ -3019,8 +3059,16 @@ class BuilderPage(Page):
             if show_message:
                 messagebox.showerror("Data folder not found", f"No data folder exists at:\n{self.output_folder}")
             return False
-        self.load_library_folder(self.output_folder)
-        self.app.set_status(f"Using Ignitron data folder: {self.output_folder}")
+        self.load_library_folder(self.output_folder, replace=True)
+        loaded_layout = self.load_saved_layout(self.output_folder / "PresetList.txt")
+        if loaded_layout:
+            self.app.set_status(
+                f"Loaded {self.bank_count} saved bank(s) from {self.output_folder / 'PresetList.txt'}"
+            )
+        else:
+            self.app.set_status(
+                f"Using Ignitron data folder with a new {self.bank_count}-bank layout: {self.output_folder}"
+            )
         return True
 
     def load_library_and_open_firmware(self):
@@ -3037,13 +3085,33 @@ class BuilderPage(Page):
     def on_project_changed(self):
         self.load_project_data(show_message=False)
 
-    def load_library_folder(self, folder):
+    def load_library_folder(self, folder, replace=True):
         self.library_folder = Path(folder)
         update_settings(preset_library_folder=self.library_folder)
-        self.presets = []
+        folder_key = str(self.library_folder.resolve()).casefold()
+        existing_folder_keys = {
+            str(Path(item).resolve()).casefold() for item in self.library_folders
+        }
+        if replace:
+            self.library_folders = [self.library_folder]
+            self.presets = []
+        elif folder_key in existing_folder_keys:
+            self.app.set_status(f"Preset library is already loaded: {self.library_folder}")
+            return False
+        else:
+            self.library_folders.append(self.library_folder)
+
+        known_paths = {
+            str(Path(preset["path"]).resolve()).casefold()
+            for preset in self.presets
+            if preset.get("path")
+        }
         for path in sorted(self.library_folder.rglob("*.json"), key=lambda p: p.name.lower()):
             if any(part in {"_ipt_backups", "_ipt_duplicate_backups"}
                    for part in path.relative_to(self.library_folder).parts):
+                continue
+            path_key = str(path.resolve()).casefold()
+            if path_key in known_paths:
                 continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
@@ -3061,9 +3129,49 @@ class BuilderPage(Page):
                 "path": path,
                 "data": data,
             })
-        self.library_count.set(f"{len(self.presets)} presets  |  {self.library_folder.name}")
+            known_paths.add(path_key)
+        self.presets.sort(key=lambda preset: (preset["name"].casefold(), preset["filename"].casefold()))
+        folder_label = (
+            self.library_folder.name
+            if len(self.library_folders) == 1
+            else f"{len(self.library_folders)} libraries"
+        )
+        self.library_count.set(f"{len(self.presets)} presets  |  {folder_label}")
         self.refresh_library()
-        self.app.set_status(f"Loaded {len(self.presets)} presets from main library: {self.library_folder}")
+        action = "Loaded" if replace else "Added"
+        self.app.set_status(
+            f"{action} {len(self.presets)} total presets from {len(self.library_folders)} library folder(s)"
+        )
+        return True
+
+    def reset_layout(self, bank_count=DEFAULT_PRESET_BANKS):
+        self.bank_count = max(1, min(MAX_PRESET_BANKS, int(bank_count)))
+        self.bank_count_var.set(self.bank_count)
+        self.slots = {
+            (bank, slot): None
+            for bank in range(1, self.bank_count + 1)
+            for slot in range(1, 5)
+        }
+
+    def load_saved_layout(self, preset_list):
+        banks = parse_preset_list_banks(preset_list)
+        if not banks:
+            self.reset_layout(DEFAULT_PRESET_BANKS)
+            self.render_banks()
+            self.refresh_library()
+            return False
+
+        self.reset_layout(min(len(banks), MAX_PRESET_BANKS))
+        canonical_names = {
+            preset["filename"].casefold(): preset["filename"]
+            for preset in self.presets
+        }
+        for bank, filenames in enumerate(banks[:self.bank_count], start=1):
+            for slot, filename in enumerate(filenames[:4], start=1):
+                self.slots[(bank, slot)] = canonical_names.get(filename.casefold(), filename)
+        self.render_banks()
+        self.refresh_library()
+        return True
 
     def choose_output_folder(self):
         folder = filedialog.askdirectory(title="Select Ignitron data folder for PresetList files")
@@ -3072,12 +3180,64 @@ class BuilderPage(Page):
         self.output_folder = Path(folder)
         json_files = list(self.output_folder.rglob("*.json"))
         if json_files:
-            self.load_library_folder(self.output_folder)
+            self.load_library_folder(self.output_folder, replace=True)
             self.app.set_status(
                 f"Loaded {len(self.presets)} presets and set data output folder: {self.output_folder}")
         else:
             self.app.set_status(
                 f"Data output folder selected, but no JSON presets were found: {self.output_folder}")
+
+    def backup_data_folder(self):
+        source = Path(self.output_folder or self.app.data_dir)
+        if not source.exists():
+            messagebox.showerror("Data folder not found", f"No data folder exists at:\n{source}")
+            return False
+        if self.has_assigned_slots() and not self.export(show_message=False, backup_existing=True):
+            return False
+
+        default_name = f"Ignitron-preset-setup-{time.strftime('%Y%m%d-%H%M%S')}.zip"
+        filename = filedialog.asksaveasfilename(
+            title="Back up Ignitron preset setup",
+            defaultextension=".zip",
+            initialfile=default_name,
+            filetypes=[("ZIP archive", "*.zip")],
+        )
+        if not filename:
+            return False
+
+        destination = Path(filename)
+        if destination.suffix.lower() != ".zip":
+            destination = destination.with_suffix(".zip")
+        temporary = destination.with_name(destination.name + ".tmp")
+        excluded_folders = {"_ipt_backups", "_ipt_duplicate_backups", "__pycache__"}
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination_resolved = destination.resolve()
+            temporary_resolved = temporary.resolve()
+            with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for path in sorted(source.rglob("*")):
+                    if not path.is_file():
+                        continue
+                    relative = path.relative_to(source)
+                    if any(part in excluded_folders for part in relative.parts):
+                        continue
+                    resolved = path.resolve()
+                    if resolved in {destination_resolved, temporary_resolved}:
+                        continue
+                    archive.write(path, Path("data") / relative)
+            os.replace(temporary, destination)
+        except Exception as exc:
+            with contextlib.suppress(OSError):
+                temporary.unlink()
+            messagebox.showerror("Backup failed", f"Could not create the preset setup backup:\n{exc}")
+            return False
+
+        self.app.set_status(f"Backed up preset setup to {destination}")
+        messagebox.showinfo(
+            "Backup complete",
+            f"The complete preset data folder was saved to:\n{destination}",
+        )
+        return True
 
     def refresh_library(self):
         query = self.search_var.get().strip().lower()
@@ -3260,8 +3420,8 @@ class BuilderPage(Page):
         self.refresh_library()
 
     def add_bank(self):
-        if self.bank_count >= 30:
-            self.app.set_status("The maximum is 30 banks")
+        if self.bank_count >= MAX_PRESET_BANKS:
+            self.app.set_status(f"The maximum is {MAX_PRESET_BANKS} banks")
             return
         self.bank_count += 1
         self.bank_count_var.set(self.bank_count)
@@ -3274,7 +3434,7 @@ class BuilderPage(Page):
             requested = int(self.bank_count_var.get())
         except (TypeError, ValueError, tk.TclError):
             requested = self.bank_count
-        requested = max(1, min(30, requested))
+        requested = max(1, min(MAX_PRESET_BANKS, requested))
         self.bank_count_var.set(requested)
         if requested == self.bank_count:
             return
@@ -4996,7 +5156,10 @@ class FilesystemUploaderPage(Page):
 
         tk.Label(controls, text="PLATFORMIO", bg=SURFACE, fg=GOLD,
                  font=("Segoe UI Semibold", 9)).grid(row=1, column=0, sticky="w", padx=(0, 10), pady=5)
-        ttk.Entry(controls, textvariable=self.platformio_var).grid(row=1, column=1, sticky="ew", pady=5)
+        self.platformio_entry = ttk.Entry(controls, textvariable=self.platformio_var)
+        self.platformio_entry.grid(row=1, column=1, sticky="ew", pady=5)
+        self.platformio_entry.bind("<Return>", self.save_platformio_path)
+        self.platformio_entry.bind("<FocusOut>", self.save_platformio_path)
         ttk.Button(controls, text="Browse", style="Dark.TButton",
                    command=self.choose_platformio).grid(row=1, column=2, padx=(10, 0), pady=5)
 
@@ -5065,7 +5228,13 @@ class FilesystemUploaderPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            self.save_platformio_path()
+
+    def save_platformio_path(self, _event=None):
+        filename = self.platformio_var.get().strip()
+        if filename:
             update_settings(platformio_executable=filename)
+        return filename
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -5234,6 +5403,7 @@ class FilesystemUploaderPage(Page):
         if self.running:
             messagebox.showinfo("PlatformIO running", "A filesystem task is already running.")
             return
+        self.save_platformio_path()
         if not self.validate_data(show_success=False):
             return
         if "uploadfs" in targets and not self.selected_port():
@@ -5419,7 +5589,10 @@ class FirmwareUploadPage(Page):
 
         tk.Label(controls, text="PLATFORMIO", bg=SURFACE, fg=GOLD,
                  font=("Segoe UI Semibold", 9)).grid(row=0, column=3, sticky="w", padx=(18, 10), pady=5)
-        ttk.Entry(controls, textvariable=self.platformio_var).grid(row=0, column=4, sticky="ew", pady=5)
+        self.platformio_entry = ttk.Entry(controls, textvariable=self.platformio_var)
+        self.platformio_entry.grid(row=0, column=4, sticky="ew", pady=5)
+        self.platformio_entry.bind("<Return>", self.save_platformio_path)
+        self.platformio_entry.bind("<FocusOut>", self.save_platformio_path)
         ttk.Button(controls, text="Browse", style="Dark.TButton",
                    command=self.choose_platformio).grid(row=0, column=5, padx=(10, 0), pady=5)
 
@@ -5932,7 +6105,13 @@ class FirmwareUploadPage(Page):
         )
         if filename:
             self.platformio_var.set(filename)
+            self.save_platformio_path()
+
+    def save_platformio_path(self, _event=None):
+        filename = self.platformio_var.get().strip()
+        if filename:
             update_settings(platformio_executable=filename)
+        return filename
 
     def load_project_defaults(self):
         saved_mods = load_settings()
@@ -6831,6 +7010,7 @@ class FirmwareUploadPage(Page):
             messagebox.showinfo("PresetList PDF not found", f"No PresetList.pdf exists yet at:\n{pdf_path}")
 
     def validate_project(self, check_erase=True):
+        self.save_platformio_path()
         active = self.app.active_serial_page
         if active and getattr(active, "running", False):
             messagebox.showinfo("USB is in use", f"End the {active.tool_title} connection before starting a Firmware task.")

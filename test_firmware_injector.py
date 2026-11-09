@@ -162,7 +162,7 @@ const bool ENABLE_FX_BLINK = false;
             source.mkdir(parents=True)
             config = source / "Config_Definitions.h"
             config.write_text(
-                'const string VERSION = "2.1.04";\n'
+                'const string VERSION = "2.1.05";\n'
                 '// #define OLED_DRIVER_SSD1306\n'
                 '#define OLED_DRIVER_SH1106\n'
                 '// #define OLED_DRIVER_SH1107\n'
@@ -173,7 +173,7 @@ const bool ENABLE_FX_BLINK = false;
 
             page = object.__new__(IPT.FirmwareUploadPage)
             page.project_var = variable(str(project))
-            page.fw_version_var = variable("2.1.04")
+            page.fw_version_var = variable("2.1.05")
             page.apply_screen_mod_var = variable(True)
             page.apply_battery_mod_var = variable(False)
             page.apply_timing_mod_var = variable(False)
@@ -369,14 +369,14 @@ const bool ENABLE_FX_BLINK = false;
             (project / "src").mkdir(parents=True)
             config = project / "src/Config_Definitions.h"
             config.write_text(
-                'const string VERSION = "2.1.04";\n'
+                'const string VERSION = "2.1.05";\n'
                 'const int LED_BRIGHTNESS_PERCENT = 100;\n',
                 encoding="utf-8",
             )
             page = object.__new__(IPT.FirmwareUploadPage)
             page.app = SimpleNamespace(set_status=lambda _text: None)
             page.project_var = variable(str(project))
-            page.fw_version_var = variable("2.1.04")
+            page.fw_version_var = variable("2.1.05")
             page.led_brightness_var = variable("37")
             page.apply_screen_mod_var = variable(False)
             page.apply_battery_mod_var = variable(False)
@@ -892,6 +892,8 @@ class CrossPlatformReleaseTests(unittest.TestCase):
         builder_toolbar = source[toolbar_start:toolbar_end]
         self.assertIn('text="Load library"', builder_toolbar)
         self.assertIn('command=self.load_library_and_open_firmware', builder_toolbar)
+        self.assertIn('text="Back up data"', builder_toolbar)
+        self.assertIn('command=self.backup_data_folder', builder_toolbar)
         self.assertNotIn('text="Export + select port"', builder_toolbar)
 
         firmware_start = source.index("class FirmwareUploadPage(Page):")
@@ -949,6 +951,131 @@ class CrossPlatformReleaseTests(unittest.TestCase):
 
         self.assertFalse(builder.load_library_and_open_firmware())
         self.assertEqual([], calls)
+
+    def test_builder_loads_existing_project_preset_list_for_editing(self):
+        class Variable:
+            def __init__(self, value=None):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        with tempfile.TemporaryDirectory() as temp:
+            data_dir = Path(temp) / "data"
+            data_dir.mkdir()
+            for filename, name in (("Clean.json", "Clean"), ("Lead.json", "Lead")):
+                (data_dir / filename).write_text(
+                    json.dumps({"Name": name, "UUID": name.upper(), "Pedals": []}),
+                    encoding="utf-8",
+                )
+            (data_dir / "PresetList.txt").write_text(
+                "-- Bank 1\nClean.json\nLead.json\nClean.json\nLead.json\n"
+                "-- Bank 2\nLead.json\nClean.json\nLead.json\nClean.json\n",
+                encoding="utf-8",
+            )
+
+            statuses = []
+            builder = object.__new__(IPT.BuilderPage)
+            builder.app = SimpleNamespace(data_dir=data_dir, set_status=statuses.append)
+            builder.output_folder = data_dir
+            builder.library_folder = None
+            builder.library_folders = []
+            builder.presets = []
+            builder.filtered = []
+            builder.bank_count = IPT.DEFAULT_PRESET_BANKS
+            builder.bank_count_var = Variable(builder.bank_count)
+            builder.library_count = Variable()
+            builder.slots = {}
+            builder.refresh_library = lambda: None
+            builder.render_banks = lambda: None
+
+            with mock.patch.object(IPT, "update_settings"):
+                self.assertTrue(builder.load_project_data(show_message=False))
+
+            self.assertEqual(2, builder.bank_count)
+            self.assertEqual("Clean.json", builder.slots[(1, 1)])
+            self.assertEqual("Lead.json", builder.slots[(2, 1)])
+            self.assertIn("Loaded 2 saved bank(s)", statuses[-1])
+
+    def test_builder_adds_another_library_without_replacing_the_first(self):
+        class Variable:
+            def __init__(self):
+                self.value = ""
+
+            def set(self, value):
+                self.value = value
+
+        with tempfile.TemporaryDirectory() as temp:
+            first = Path(temp) / "first"
+            second = Path(temp) / "second"
+            first.mkdir()
+            second.mkdir()
+            (first / "First.json").write_text(
+                json.dumps({"Name": "First", "UUID": "FIRST", "Pedals": []}),
+                encoding="utf-8",
+            )
+            (second / "Second.json").write_text(
+                json.dumps({"Name": "Second", "UUID": "SECOND", "Pedals": []}),
+                encoding="utf-8",
+            )
+
+            builder = object.__new__(IPT.BuilderPage)
+            builder.app = SimpleNamespace(set_status=lambda _text: None)
+            builder.library_folder = None
+            builder.library_folders = []
+            builder.presets = []
+            builder.library_count = Variable()
+            builder.refresh_library = lambda: None
+
+            with mock.patch.object(IPT, "update_settings"):
+                self.assertTrue(builder.load_library_folder(first, replace=True))
+                self.assertTrue(builder.load_library_folder(second, replace=False))
+
+            self.assertEqual({"First.json", "Second.json"}, {
+                preset["filename"] for preset in builder.presets
+            })
+            self.assertEqual(2, len(builder.library_folders))
+            self.assertIn("2 libraries", builder.library_count.value)
+
+    def test_builder_defaults_to_30_and_supports_up_to_69_banks(self):
+        self.assertEqual(30, IPT.DEFAULT_PRESET_BANKS)
+        self.assertEqual(69, IPT.MAX_PRESET_BANKS)
+        source = (ROOT / "ignitron_preset_tools_v2.1.py").read_text(encoding="utf-8")
+        self.assertIn("to=MAX_PRESET_BANKS", source)
+        self.assertIn("min(MAX_PRESET_BANKS, requested)", source)
+
+    def test_builder_data_backup_contains_setup_and_excludes_internal_backups(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            (data_dir / "PresetList.txt").write_text("-- Bank 1\nTone.json\n", encoding="utf-8")
+            (data_dir / "Tone.json").write_text("{}", encoding="utf-8")
+            internal = data_dir / "_ipt_backups"
+            internal.mkdir()
+            (internal / "old.txt").write_text("old", encoding="utf-8")
+            destination = root / "preset-setup.zip"
+
+            statuses = []
+            builder = object.__new__(IPT.BuilderPage)
+            builder.app = SimpleNamespace(data_dir=data_dir, set_status=statuses.append)
+            builder.output_folder = data_dir
+            builder.has_assigned_slots = lambda: False
+
+            with mock.patch.object(
+                IPT.filedialog, "asksaveasfilename", return_value=str(destination)
+            ), mock.patch.object(IPT.messagebox, "showinfo"):
+                self.assertTrue(builder.backup_data_folder())
+
+            with IPT.zipfile.ZipFile(destination) as archive:
+                names = set(archive.namelist())
+            self.assertIn("data/PresetList.txt", names)
+            self.assertIn("data/Tone.json", names)
+            self.assertNotIn("data/_ipt_backups/old.txt", names)
+            self.assertIn("Backed up preset setup", statuses[-1])
 
     def test_firmware_export_button_delegates_to_preset_builder(self):
         calls = []
@@ -1648,6 +1775,24 @@ class CrossPlatformReleaseTests(unittest.TestCase):
                 IPT.save_settings({"platformio_executable": str(executable)})
                 self.assertEqual(str(executable), IPT.default_platformio())
 
+    def test_manually_entered_platformio_path_is_saved_by_both_pages(self):
+        variable = SimpleNamespace(get=lambda: "  /custom/bin/platformio  ")
+        calls = []
+
+        with mock.patch.object(IPT, "update_settings", side_effect=lambda **values: calls.append(values)):
+            filesystem = object.__new__(IPT.FilesystemUploaderPage)
+            filesystem.platformio_var = variable
+            firmware = object.__new__(IPT.FirmwareUploadPage)
+            firmware.platformio_var = variable
+
+            self.assertEqual("/custom/bin/platformio", filesystem.save_platformio_path())
+            self.assertEqual("/custom/bin/platformio", firmware.save_platformio_path())
+
+        self.assertEqual([
+            {"platformio_executable": "/custom/bin/platformio"},
+            {"platformio_executable": "/custom/bin/platformio"},
+        ], calls)
+
     def test_windows_release_builds_and_smoke_tests_setup_executable(self):
         build_script = (ROOT / "build_release.ps1").read_text(encoding="utf-8")
         installer = (ROOT / "windows_installer.iss").read_text(encoding="utf-8")
@@ -1700,19 +1845,19 @@ class CrossPlatformReleaseTests(unittest.TestCase):
             self.assertIn(f'"{hint}"', source)
 
     def test_public_release_versions_agree(self):
-        self.assertEqual("2.1.04", IPT.APP_VERSION)
+        self.assertEqual("2.1.05", IPT.APP_VERSION)
         root = Path(IPT.__file__).parent
         for name in ("build_release_linux.sh", "build_release_mac.sh", "build_release.ps1"):
-            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.04"')
-        self.assertIn('VERSION = "2.1.04"', (root / "Ignitron/src/Config_Definitions.h").read_text())
-        self.assertIn('Name=Ignitron Preset Tools 2.1.04', (root / "install_linux.sh").read_text())
-        self.assertIn('RELEASE_VERSION="2.1.04"', (root / "setup_linux.sh").read_text())
-        self.assertIn('# Ignitron Preset Tools 2.1.04', (root / "README.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.04', (root / "GITHUB_RELEASE.md").read_text())
-        self.assertIn('# Ignitron Preset Tools v2.1.04', (root / "RELEASE_NOTES.md").read_text())
+            self.assertRegex((root / name).read_text(), r'(?:RELEASE_VERSION|ReleaseVersion)\s*=\s*"2\.1\.05"')
+        self.assertIn('VERSION = "2.1.05"', (root / "Ignitron/src/Config_Definitions.h").read_text())
+        self.assertIn('Name=Ignitron Preset Tools 2.1.05', (root / "install_linux.sh").read_text())
+        self.assertIn('RELEASE_VERSION="2.1.05"', (root / "setup_linux.sh").read_text())
+        self.assertIn('# Ignitron Preset Tools 2.1.05', (root / "README.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.05', (root / "GITHUB_RELEASE.md").read_text())
+        self.assertIn('# Ignitron Preset Tools v2.1.05', (root / "RELEASE_NOTES.md").read_text())
         workflow = (root / ".github/workflows/build-release.yml").read_text()
         for platform in ("Windows", "Linux", "macOS"):
-            self.assertIn(f"Ignitron-Preset-Tools-v2.1.04-{platform}", workflow)
+            self.assertIn(f"Ignitron-Preset-Tools-v2.1.05-{platform}", workflow)
 
     def test_removed_live_library_page_is_not_shipped(self):
         source = Path(IPT.__file__).read_text(encoding="utf-8")

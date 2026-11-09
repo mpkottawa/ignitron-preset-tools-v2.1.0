@@ -1,7 +1,14 @@
-# Ignitron Preset Tools v2.1.04
+# Ignitron Preset Tools v2.1.05
 
 ## Unreleased
 
+## v2.1.05 - editable saved banks and preset backups - 2026-11-08
+
+- Selecting an Ignitron folder now loads its existing `data/PresetList.txt` directly into Preset Builder, preserving the saved bank count and slot order for in-place editing.
+- **Add another library** merges additional preset folders into the current library instead of discarding presets loaded from earlier folders.
+- Preset Builder still starts new projects with 30 banks but now allows selecting and adding as many as 69 banks.
+- Added **Back up data**, which saves the current builder layout and exports the complete preset `data` folder as a restorable ZIP archive while omitting IPT's internal rolling-backup folders.
+- Manually typed or pasted PlatformIO executable paths are now saved on Enter, focus change, and before build or flash operations.
 - Windows installer upgrades now propose a sibling installation folder carrying the new IPT version, rename the previous version-named folder during the upgrade, refresh versioned shortcuts, and retain the existing firmware-backup and shared-settings protections.
 - Added a native Windows installer smoke test that starts from a `v2.1.03`-named folder and verifies the old folder is replaced by the current version-named folder.
 
