@@ -272,7 +272,9 @@ bool SparkDataControl::blockCurrentAmp() {
     if (!bleControl || !bleControl->blockConnectedAmp(
                            sparkAmpName, blockedName, blockedAddress)) {
         if (sparkDisplay) {
-            sparkDisplay->showTemporaryMessage("NO AMP CONNECTED");
+            sparkDisplay->showTemporaryMessage(
+                blockedAddress.empty() ? "NO AMP CONNECTED"
+                                       : "BLOCK SAVE FAILED");
         }
         delay(1500);
         return false;

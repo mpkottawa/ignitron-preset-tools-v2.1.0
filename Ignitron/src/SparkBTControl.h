@@ -219,6 +219,7 @@ private:
     // Some Spark models can momentarily report the NimBLE client as
     // disconnected while a long button combination is being handled.
     string lastConnectedAmpAddress_ = "";
+    string lastDiscoveredAmpName_ = "";
 
     void loadBlockedAmp();
     bool saveBlockedAmps();

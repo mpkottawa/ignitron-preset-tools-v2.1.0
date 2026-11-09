@@ -25,8 +25,18 @@ bool SparkButtonHandler::bankComboHandled_ = false;
 bool SparkButtonHandler::blocklistUpPressed_ = false;
 bool SparkButtonHandler::blocklistDownPressed_ = false;
 bool SparkButtonHandler::blocklistDeletePressed_ = false;
+bool SparkButtonHandler::blocklistUpRawPressed_ = false;
+bool SparkButtonHandler::blocklistDownRawPressed_ = false;
+bool SparkButtonHandler::blocklistDeleteRawPressed_ = false;
+unsigned long SparkButtonHandler::blocklistUpChangedAt_ = 0;
+unsigned long SparkButtonHandler::blocklistDownChangedAt_ = 0;
+unsigned long SparkButtonHandler::blocklistDeleteChangedAt_ = 0;
 bool SparkButtonHandler::blocklistInputReleasePending_ = false;
 bool SparkButtonHandler::blocklistExitRestartPending_ = false;
+
+namespace {
+const unsigned long BLOCKLIST_BUTTON_DEBOUNCE_MS = 50;
+}
 
 SparkButtonHandler::SparkButtonHandler() {
 }
@@ -85,9 +95,7 @@ void SparkButtonHandler::readButtons() {
             digitalRead(BUTTON_BANK_DOWN_GPIO) == LOW &&
             digitalRead(BUTTON_PRESET4_GPIO) == LOW) {
             blocklistInputReleasePending_ = false;
-            blocklistUpPressed_ = false;
-            blocklistDownPressed_ = false;
-            blocklistDeletePressed_ = false;
+            resetBlocklistButtonDebounce();
             if (blocklistExitRestartPending_) {
                 blocklistExitRestartPending_ = false;
                 Serial.println("AMP_BLOCKLIST EXIT_RESTART");
@@ -133,18 +141,51 @@ void SparkButtonHandler::resetAllButtons() {
     }
 }
 
+void SparkButtonHandler::resetBlocklistButtonDebounce() {
+    blocklistUpPressed_ = false;
+    blocklistDownPressed_ = false;
+    blocklistDeletePressed_ = false;
+    blocklistUpRawPressed_ = false;
+    blocklistDownRawPressed_ = false;
+    blocklistDeleteRawPressed_ = false;
+    blocklistUpChangedAt_ = 0;
+    blocklistDownChangedAt_ = 0;
+    blocklistDeleteChangedAt_ = 0;
+}
+
+bool SparkButtonHandler::blocklistPressedEdge(bool rawPressed,
+                                               bool &lastRawPressed,
+                                               bool &stablePressed,
+                                               unsigned long &rawChangedAt) {
+    const unsigned long now = millis();
+    if (rawPressed != lastRawPressed) {
+        lastRawPressed = rawPressed;
+        rawChangedAt = now;
+    }
+
+    if (stablePressed != lastRawPressed &&
+        now - rawChangedAt >= BLOCKLIST_BUTTON_DEBOUNCE_MS) {
+        stablePressed = lastRawPressed;
+        return stablePressed;
+    }
+    return false;
+}
+
 void SparkButtonHandler::readBlocklistButtons() {
     const bool upPressed = digitalRead(BUTTON_BANK_UP_GPIO) == HIGH;
     const bool downPressed = digitalRead(BUTTON_BANK_DOWN_GPIO) == HIGH;
     const bool deletePressed = digitalRead(BUTTON_PRESET4_GPIO) == HIGH;
 
-    if (upPressed && !blocklistUpPressed_) {
+    if (blocklistPressedEdge(upPressed, blocklistUpRawPressed_,
+                             blocklistUpPressed_, blocklistUpChangedAt_)) {
         spark_dc_->selectPreviousBlockedAmp();
     }
-    if (downPressed && !blocklistDownPressed_) {
+    if (blocklistPressedEdge(downPressed, blocklistDownRawPressed_,
+                             blocklistDownPressed_, blocklistDownChangedAt_)) {
         spark_dc_->selectNextBlockedAmp();
     }
-    if (deletePressed && !blocklistDeletePressed_) {
+    if (blocklistPressedEdge(deletePressed, blocklistDeleteRawPressed_,
+                             blocklistDeletePressed_, blocklistDeleteChangedAt_)) {
         const bool actionCompleted = spark_dc_->unblockSelectedAmp();
         if (!spark_dc_->blocklistMenuActive()) {
             // Confirming the EXIT row closes the menu. Use the same
@@ -154,9 +195,6 @@ void SparkButtonHandler::readBlocklistButtons() {
         }
     }
 
-    blocklistUpPressed_ = upPressed;
-    blocklistDownPressed_ = downPressed;
-    blocklistDeletePressed_ = deletePressed;
 }
 
 OperationMode SparkButtonHandler::checkBootOperationMode() {
@@ -463,12 +501,6 @@ void SparkButtonHandler::btnSwitchTunerModeHandler(BfButton *btn, BfButton::pres
         Serial.println("SparkDataControl not setup yet, ignoring button press.");
         return;
     }
- #ifdef ENABLE_IPT_AMP_BLOCKLIST
-    if (isBankComboPressed()) {
-        spark_dc_->blockCurrentAmp();
-        return;
-    }
-#endif
     // Switch between tuner mode where tuner can be separately switched
     // Debug
 #ifdef DEBUG
@@ -643,12 +675,6 @@ void SparkButtonHandler::btnSwitchModeHandler(BfButton *btn, BfButton::press_pat
         Serial.println("SparkDataControl not setup yet, ignoring button press.");
         return;
     }
-#ifdef ENABLE_IPT_AMP_BLOCKLIST
-    if (isBankComboPressed()) {
-        spark_dc_->blockCurrentAmp();
-        return;
-    }
-#endif
     // Switch between preset mode FX mode where FX can be separately switched
     // Debug
 #ifdef DEBUG

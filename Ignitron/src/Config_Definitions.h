@@ -26,7 +26,7 @@ using namespace std;
 #endif
 
 // Software version
-const string VERSION = "2.1.04";
+const string VERSION = "2.1.05";
 
 // Battery indicator
 // Note: This battery can be for the Ignitron controller or the Spark amp.
@@ -117,6 +117,9 @@ enum BatteryChargingStatus {
 // to see that we have left the normal Preset mode. However on stage
 // this can be irritating with a pedal flashing.
 const bool ENABLE_FX_BLINK = false;
+
+// PWM brightness for all pedal LEDs. 0 = off, 100 = full brightness.
+const int LED_BRIGHTNESS_PERCENT = 100;
 
 // Button GPIOs
 enum ButtonGpio {

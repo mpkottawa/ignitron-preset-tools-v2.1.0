@@ -11,6 +11,7 @@
 #include <esp_avrc_api.h>
 #include <esp_bt_device.h>
 #include <esp_gap_bt_api.h>
+#include <cctype>
 
 bool SparkBTControl::isAppConnectedSerial_ = false;
 string SparkBTControl::serialPeerAddress_ = "";
@@ -44,6 +45,30 @@ string formatBtAddress(const uint8_t *address) {
              address[0], address[1], address[2], address[3], address[4],
              address[5]);
     return string(text);
+}
+
+string sparkModelFromAdvertisement(const string &advertisedName) {
+    string upperName = advertisedName;
+    for (char &character : upperName) {
+        character =
+            (char)std::toupper((unsigned char)character);
+    }
+    if (upperName.find("NEO") != string::npos) {
+        return AMP_NAME_SPARK_NEO;
+    }
+    if (upperName.find("MINI") != string::npos) {
+        return AMP_NAME_SPARK_MINI;
+    }
+    if (upperName.find("SPARK 2") != string::npos) {
+        return AMP_NAME_SPARK_2;
+    }
+    if (upperName.find("GO") != string::npos) {
+        return AMP_NAME_SPARK_GO;
+    }
+    if (upperName.find("SPARK 40") != string::npos) {
+        return AMP_NAME_SPARK_40;
+    }
+    return "";
 }
 
 void printBondedDevices() {
@@ -442,6 +467,15 @@ bool SparkBTControl::saveBlockedAmps() {
                LittleFS.remove(blockedAmpFileName_.c_str());
     }
 
+    // A freshly uploaded filesystem does not contain the runtime config
+    // directory. LittleFS.open() cannot create missing parent directories.
+    const char *configDirectory = "/config";
+    if (!LittleFS.exists(configDirectory) &&
+        !LittleFS.mkdir(configDirectory)) {
+        Serial.println("Cannot create blocked amp config directory.");
+        return false;
+    }
+
     File file = LittleFS.open(blockedAmpFileName_.c_str(), FILE_WRITE);
     if (!file) {
         return false;
@@ -472,7 +506,14 @@ bool SparkBTControl::blockConnectedAmp(const string &ampName, string &blockedNam
     }
 
     blockedAddress = lastConnectedAmpAddress_;
+    const string advertisedModel =
+        sparkModelFromAdvertisement(lastDiscoveredAmpName_);
     blockedName = ampName.empty() ? "Spark amp" : ampName;
+    if (ampName == AMP_NAME_SPARK_40 && !advertisedModel.empty()) {
+        // SparkDataControl starts with Spark 40 as a compatibility default.
+        // Prefer the advertisement when the model response has not arrived.
+        blockedName = advertisedModel;
+    }
 
     bool alreadyBlocked = false;
     size_t existingIndex = 0;
@@ -758,9 +799,39 @@ void SparkBTControl::onResult(NimBLEAdvertisedDevice *advertisedDevice) {
 
     if (advertisedDevice->isAdvertisingService(
             NimBLEUUID(SPARK_BLE_SERVICE_UUID))) {
+        const string advertisedAddress =
+            advertisedDevice->getAddress().toString();
+        lastDiscoveredAmpName_ =
+            advertisedDevice->haveName() ? advertisedDevice->getName() : "";
+        const string advertisedModel =
+            sparkModelFromAdvertisement(lastDiscoveredAmpName_);
+        Serial.printf("SPARK_ADV name=%s model=%s address=%s\n",
+                      lastDiscoveredAmpName_.empty()
+                          ? "unknown"
+                          : lastDiscoveredAmpName_.c_str(),
+                      advertisedModel.empty() ? "unknown"
+                                               : advertisedModel.c_str(),
+                      advertisedAddress.c_str());
 #ifdef ENABLE_IPT_AMP_BLOCKLIST
-        string advertisedAddress = advertisedDevice->getAddress().toString();
         if (isAmpBlocked(advertisedAddress)) {
+            if (!advertisedModel.empty()) {
+                for (size_t i = 0; i < blockedAmpAddresses_.size(); ++i) {
+                    if (blockedAmpAddresses_[i] == advertisedAddress &&
+                        blockedAmpNames_[i] != advertisedModel) {
+                        const string previousName = blockedAmpNames_[i];
+                        blockedAmpNames_[i] = advertisedModel;
+                        if (saveBlockedAmps()) {
+                            Serial.printf(
+                                "Corrected blocked amp model: %s -> %s\n",
+                                previousName.c_str(),
+                                advertisedModel.c_str());
+                        } else {
+                            blockedAmpNames_[i] = previousName;
+                        }
+                        break;
+                    }
+                }
+            }
             string name = blockedAmpName(advertisedAddress);
             if (!name.empty()) {
                 Serial.printf("Ignoring blocked Spark amp: %s (%s)\n",
@@ -1076,6 +1147,20 @@ void SparkBTControl::startBTSerial() {
 }
 
 void SparkBTControl::printSerialDiagnostics() {
+    const bool ampLive = client_ && client_->isConnected();
+    string ampPeer = lastConnectedAmpAddress_;
+    if (ampLive) {
+        ampPeer = client_->getPeerAddress().toString();
+    }
+    Serial.printf("AMP_DIAG cached=%d live=%d found=%d peer=%s blocked=%u adv=%s\n",
+                  isAmpConnected_ ? 1 : 0, ampLive ? 1 : 0,
+                  isConnectionFound_ ? 1 : 0,
+                  ampPeer.empty() ? "none" : ampPeer.c_str(),
+                  (unsigned int)blockedAmpAddresses_.size(),
+                  lastDiscoveredAmpName_.empty()
+                      ? "unknown"
+                      : lastDiscoveredAmpName_.c_str());
+
     if (!btSerial) {
         Serial.println("BT_DIAG mode=INACTIVE client=0 peer=none");
         return;

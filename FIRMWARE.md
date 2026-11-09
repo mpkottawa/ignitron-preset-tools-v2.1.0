@@ -1,16 +1,18 @@
-# Firmware included with IPT v2.1.04
+# Firmware included with IPT v2.1.05
 
-Every IPT v2.1.04 desktop package includes two complete PlatformIO projects. They are source projects that IPT builds for the connected pedal; no separate Arduino IDE setup is required.
+Every IPT v2.1.05 desktop package includes two complete PlatformIO projects. They are source projects that IPT builds for the connected pedal; no separate Arduino IDE setup is required.
 
 ## Which folder should I use?
 
 ### `ignitron firmware` (native packages) or `Ignitron 1.9.0` (source release)
 
-This is the ready-to-build IPT v2.1.04 firmware and the normal choice for this release. It includes the serial protocol used by Pedal Remote and Spark Capture, Android Spark-app reconnect support, software-controlled capture mode, the multi-amp blocklist, Spark 2 battery support, the dedicated-preset-LED flicker fix, the SSD1309 cold-start correction, the prepared preset library, and all current fixes.
+This is the ready-to-build IPT v2.1.05 firmware and the normal choice for this release. It includes the serial protocol used by Pedal Remote and Spark Capture, Android Spark-app reconnect support, software-controlled capture mode, the multi-amp blocklist, Spark 2 battery support, the dedicated-preset-LED flicker fix, the SSD1309 cold-start correction, the prepared preset library, and all current fixes.
 
 For Android reconnects, the pedal now exposes the Spark-compatible Classic Bluetooth audio/control profile alongside serial data, reconnects one saved phone bond after restart, restores discoverability after a disconnect, and clears stale serial-session state. Automatic boot reconnect is intentionally skipped when multiple phones are bonded; select the intended phone manually in that case.
 
 The release default is the SH1106 1.3-inch OLED. Before flashing, review the Firmware and Hardware tabs if your pedal uses a different display, GPIO mapping, or battery wiring. **Build + Flash FW + FS** saves and verifies the values shown in IPT before compiling.
+
+**LED brightness %** in the Firmware tab controls every pedal LED with ESP32 PWM. `100` preserves full brightness, lower values dim the LEDs, and `0` turns them off. Existing current-limiting resistors must remain installed.
 
 For a 2.42-inch SSD1309 I2C display, select **OLED_DRIVER_SSD1309 - 2.42 inch**. The supported wiring is address `0x3C`, SDA GPIO21, SCL GPIO22, and the display's active-low RES input on GPIO5. Only the SSD1309 selection drives GPIO5: startup uses the Adafruit SSD1306-compatible command path with `SSD1306_EXTERNALVCC` and generates a hardware reset pulse before initialization. SSD1306, SH1106, and SH1107 continue to use their existing reset and power behavior.
 

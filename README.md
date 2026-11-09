@@ -1,11 +1,11 @@
-# Ignitron Preset Tools 2.1.04
+# Ignitron Preset Tools 2.1.05
 *Shoutout to stangreg for this great project `https://github.com/stangreg/Ignitron` *
 
 *This has not been tested out on mac*
 
 <img width="1024" height="1024" alt="IPT" src="https://github.com/mpkottawa/ignitron-preset-tools/blob/main/Ignitron%20preset%20tools%20logo.png" />
 
-Ignitron Preset Tools (IPT) is a desktop control center for building Ignitron preset banks, flashing firmware and filesystem data, remotely selecting Spark presets, backing up pedal presets, capturing presets from the Spark app, and playing backing tracks. This repository and its native packages provide **v2.1.04**, including the Windows installer and programming setup, clearer firmware-action descriptions, the SSD1309 cold-start correction, the Android Spark-app reconnect fix, and all earlier Linux, USB, capture, backup, and installer improvements.
+Ignitron Preset Tools (IPT) is a desktop control center for building Ignitron preset banks, flashing firmware and filesystem data, remotely selecting Spark presets, backing up pedal presets, capturing presets from the Spark app, and playing backing tracks. This repository and its native packages provide **v2.1.05**, which loads existing bank layouts for editing, merges presets from multiple libraries, backs up the complete preset data folder, remembers manually entered PlatformIO paths, and carries forward the Windows installer, SSD1309, Android reconnect, Linux, USB, capture, and installer improvements.
 
 ## Supported platforms
 
@@ -23,7 +23,7 @@ Other Unix-like systems may work from source when Python, Tk, pyserial, VLC, and
 
 Each native download contains the IPT application, documentation, reference material, and two firmware projects:
 
-- **`ignitron firmware`** is the ready-to-build IPT v2.1.04 firmware with the current serial features, Android reconnect support, SSD1309 cold-start correction, and prepared preset library. In the GitHub source tree the same project is named **`Ignitron`**.
+- **`ignitron firmware`** is the ready-to-build IPT v2.1.05 firmware with the current serial features, Android reconnect support, SSD1309 cold-start correction, and prepared preset library. In the GitHub source tree the same project is named **`Ignitron`**.
 - **`Ignitron 1.9.0`** is the earlier firmware kept as a clean fallback. It does not have IPT v2.1 support unless you deliberately inject that support into this copy.
 
 Both projects are sanitized for release: saved host serial ports, build caches, backups, logs, captures, and local paths are excluded. See [FIRMWARE.md](FIRMWARE.md) before flashing, especially if the pedal does not use the default SH1106 display.
@@ -32,7 +32,7 @@ Both projects are sanitized for release: saved host serial ports, build caches, 
 
 ### Windows
 
-Beginning with v2.1.04, download the `Windows-x64-Setup.exe` asset and run it. This is the recommended Windows package. It installs IPT for the current user without administrator access, creates Start-menu shortcuts, and offers to run **Windows Programming Setup** after installation. The default installation folder includes the installed version. When another installer-based IPT version is present, Setup shows both paths, renames the previous installation folder for the new version, and updates the application there. The destination-folder page always remains available, shared IPT settings are preserved, and bundled firmware folders are moved into a timestamped `firmware backups` folder before fresh copies are installed.
+Beginning with v2.1.05, download the `Windows-x64-Setup.exe` asset and run it. This is the recommended Windows package. It installs IPT for the current user without administrator access, creates Start-menu shortcuts, and offers to run **Windows Programming Setup** after installation. The default installation folder includes the installed version. When another installer-based IPT version is present, Setup shows both paths, renames the previous installation folder for the new version, and updates the application there. The destination-folder page always remains available, shared IPT settings are preserved, and bundled firmware folders are moved into a timestamped `firmware backups` folder before fresh copies are installed.
 
 Windows Programming Setup:
 
@@ -46,7 +46,7 @@ After **Windows programming setup is ready** appears, open IPT, review **Firmwar
 
 The portable ZIP remains available. Extract the whole ZIP before running its `.exe`; do not run it from inside the archive. To prepare programming from the portable package, right-click `windows_programming_setup.ps1`, choose **Run with PowerShell**, and follow the prompts. Rerun **Windows Programming Setup** from the Start menu at any time to repair or verify the toolchain. Logs are saved under `%LOCALAPPDATA%\Ignitron Preset Tools\Logs`.
 
-If Windows SmartScreen appears on the unsigned installer or portable build, choose **More info > Run anyway**. See [WINDOWS-INSTALL-GUIDE.md](WINDOWS-INSTALL-GUIDE.md) for upgrade behavior, programming prerequisites, troubleshooting, and manual checks. The earlier v2.1.03 release remains ZIP-only; v2.1.04 adds the Setup executable.
+If Windows SmartScreen appears on the unsigned installer or portable build, choose **More info > Run anyway**. See [WINDOWS-INSTALL-GUIDE.md](WINDOWS-INSTALL-GUIDE.md) for upgrade behavior, programming prerequisites, troubleshooting, and manual checks. The earlier v2.1.03 release remains ZIP-only; v2.1.05 adds the Setup executable.
 
 ### macOS
 
@@ -55,13 +55,13 @@ Download the package matching the Mac:
 - `macOS-arm64.zip` for Apple Silicon (M1 and newer).
 - `macOS-x64.zip` for Intel Macs.
 
-Extract it and move `Ignitron Preset Tools v2.1.04.app` to Applications. Unsigned builds may require Control-clicking the app and choosing **Open** once. Signing and notarization with an Apple Developer ID removes that warning for a public Mac distribution.
+Extract it and move `Ignitron Preset Tools v2.1.05.app` to Applications. Unsigned builds may require Control-clicking the app and choosing **Open** once. Signing and notarization with an Apple Developer ID removes that warning for a public Mac distribution.
 
 ### Linux
 
 #### Recommended: bundled all-in-one setup
 
-1. Download the **Linux-x64.tar.gz** archive from [v2.1.04](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/tag/v2.1.04) for a typical Intel/AMD PC, or **Linux-arm64.tar.gz** for an ARM64 computer.
+1. Download the **Linux-x64.tar.gz** archive from [v2.1.05](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/tag/v2.1.05) for a typical Intel/AMD PC, or **Linux-arm64.tar.gz** for an ARM64 computer.
 2. Right-click the download and **Extract** the whole archive into a local folder. Open the extracted folder, not the archive viewer. Keep the pedal unplugged and close IPT.
 3. Double-click **Install Ignitron** (`Install Ignitron.desktop`). If your desktop asks, choose **Execute**, **Trust**, or **Allow Launching**. Some desktops require right-click > Properties > Permissions > executable first.
 4. Enter your Linux password in the setup terminal when asked; characters stay hidden. Wait for **SETUP COMPLETE**. IPT then opens automatically and is available in the application menu.
@@ -72,9 +72,9 @@ Review the pedal hardware settings before flashing. Setup never uploads to or er
 
 **If the launcher opens as text:** right-click empty space inside the extracted folder, choose **Open Terminal Here**, and paste `bash ./launch_linux_setup.sh`. `bash ./setup_linux.sh --check` previews the plan without changes. Errors remain visible in the terminal, with logs under `~/.local/state/ignitron-preset-tools/setup`. Correct the reported problem and rerun setup. Atomic/immutable editions and other distributions need a separate setup method.
 
-The Linux archives include the all-in-one installer and revised [Linux installation PDF](Linux-Install-Guide.pdf). Use the `SHA256SUMS.txt` published with v2.1.04.
+The Linux archives include the all-in-one installer and revised [Linux installation PDF](Linux-Install-Guide.pdf). Use the `SHA256SUMS.txt` published with v2.1.05.
 
-The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.04/Install-IPT-Linux.sh) is also available for online setup: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"`. That route downloads the matching app package automatically.
+The separate [Install-IPT-Linux.sh](https://github.com/mpkottawa/ignitron-preset-tools-v2.1.0/releases/download/v2.1.05/Install-IPT-Linux.sh) is also available for online setup: download it into Downloads and run `bash "$HOME/Downloads/Install-IPT-Linux.sh"`. That route downloads the matching app package automatically.
 
 #### Manual installation alternative
 
@@ -99,8 +99,8 @@ Download the archive matching the computer. For an x64 download in the normal Do
 
 ```bash
 cd "$HOME/Downloads"
-tar -xzf "Ignitron.Preset.Tools.v2.1.04.Linux-x64.tar.gz"
-cd "Ignitron Preset Tools v2.1.04 Linux-x64"
+tar -xzf "Ignitron.Preset.Tools.v2.1.05.Linux-x64.tar.gz"
+cd "Ignitron Preset Tools v2.1.05 Linux-x64"
 chmod +x install_linux.sh
 ./install_linux.sh
 ```
@@ -166,7 +166,7 @@ Open IPT and select the installed current project:
 ~/.local/share/ignitron-preset-tools/ignitron firmware
 ```
 
-This is the IPT v2.1.04 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
+This is the IPT v2.1.05 firmware. The neighboring `Ignitron 1.9.0` folder is the unmodified fallback and should be selected only when that older baseline is intentional. In **Firmware > Show setup**, select `esp32dev`, the detected `/dev/ttyUSB*` or `/dev/ttyACM*` port, and the PlatformIO executable above.
 
 For optional troubleshooting, build firmware and filesystem without uploading to the pedal:
 
@@ -222,21 +222,25 @@ Or run `python3 ignitron_preset_tools_v2.1.py` directly. On Windows, `py -3 igni
 3. Open **Firmware**, choose the PlatformIO environment and detected serial port.
 4. Click **Build + Flash FW + FS**.
 
-For the normal v2.1.04 setup, select the bundled `ignitron firmware` folder (`Ignitron` when running from source). Select `Ignitron 1.9.0` only when you intentionally want the fallback release.
+For the normal v2.1.05 setup, select the bundled `ignitron firmware` folder (`Ignitron` when running from source). Select `Ignitron 1.9.0` only when you intentionally want the fallback release.
 
 The persistent **Pedal USB** control in the very top-right of the page header is the single serial-port selector for the whole app. IPT watches for newly connected USB serial devices and asks whether the detected device is the Ignitron pedal. Confirming a port applies it immediately to Firmware, Pedal Remote, Spark Capture, and every other serial tool, then writes `upload_port` to the selected/default PlatformIO environment. The status indicator shows **Disconnected**, **USB ready**, or **Connected**. Use **Scan USB** or choose a different port manually at any time.
 
 The main button first applies the displayed firmware version and every selected **Apply on Save / Flash** settings group, then reads the project configuration back and verifies it before PlatformIO starts. A mismatch stops the flash instead of compiling stale settings. It also writes the selected environment/port/speed to `platformio.ini`, optionally cleans, builds both firmware and filesystem, then optionally erases and uploads firmware and filesystem data. The reliable default upload speed is `460800`; serial control features use `115200`.
 
-The release firmware includes its prepared preset library. You can replace or reorganize it in **Preset Builder** before a filesystem upload. The bundled 1.9.0 folder is kept separate so current changes never overwrite the fallback unless you explicitly select and edit it.
+The release firmware includes its prepared preset library. Selecting an Ignitron folder loads that folder's existing `data/PresetList.txt` into **Preset Builder**, including its saved bank count and slot order, so individual presets can be changed without rebuilding the complete layout. The bundled 1.9.0 folder is kept separate so current changes never overwrite the fallback unless you explicitly select and edit it.
 
 ## Main sections
 
 ### Preset Builder
 
 - Load JSON preset files and arrange them into pedal banks.
+- Existing `PresetList.txt` banks load automatically from the Ignitron folder selected on the Dashboard.
+- New layouts default to 30 banks; the bank selector supports 1 through 69 banks.
+- **Add another library** merges presets from additional folders instead of replacing the current library.
 - Drag or double-click presets into bank slots.
 - Save `PresetList.txt`, `PresetListUUIDs.txt`, preset JSON, and `PresetList.pdf` to the selected firmware project's `data` folder.
+- **Back up data** first saves the visible layout, then exports the complete preset `data` folder as a ZIP archive.
 - The layout visible in the builder is saved automatically before a combined flash.
 
 ### Firmware
@@ -248,6 +252,7 @@ The release firmware includes its prepared preset library. You can replace or re
 - The Hardware tab includes **Restore stock**, which restores and immediately saves the factory Ignitron GPIO mapping and hardware options, then turns mapping protection back on. Stock defaults are maintained in one registry so future Hardware-tab settings can participate in the same reset.
 - IPT only prompts to inject required 2.1 support when it is not already detected.
 - OLED, battery, GPIO, blocklist, dedicated LED, and timing options remain independently selectable.
+- **LED brightness %** applies PWM dimming to all pedal LEDs (`100` = full, `0` = off) without requiring a wiring change; the physical current-limiting resistors remain required.
 - The 2.42-inch SSD1309 option uses I2C address `0x3C`, SDA GPIO21, SCL GPIO22, external display power mode, and an active-low hardware reset pulse on GPIO5. GPIO5 is not used as the OLED reset pin for SSD1306, SH1106, or SH1107. Saving the OLED selection rewrites one canonical four-driver block and removes stray duplicate definitions.
 - The Battery section includes an optional **Display Spark 2 battery when connected** setting. It keeps the configured pedal battery as the primary reading, adds Spark 2 telemetry only while a Spark 2 is connected, and automatically retains the normal single-battery layout for other amps.
 - AMP blocklist requests use the address from the most recent confirmed connection during the current boot, avoiding false disconnect reports from Spark MINI during the long button hold. Multiple amps can remain blocked together, and block/unblock screens show both the detected Spark model and its Bluetooth address. While disconnected at the Ignitron logo, hold Bank Up + Bank Down for two seconds to open or close the blocked-amp list and use Bank Up/Down to select an entry. Press Preset 4 once to show the `YOU SURE?` confirmation, then press Preset 4 again to unblock it. Moving to another entry or leaving the menu cancels the confirmation. Holding Bank Up + Bank Down during boot still clears the entire list.
@@ -263,7 +268,7 @@ The release firmware includes its prepared preset library. You can replace or re
 
 Spark Capture requests one-shot AMP mode in software. The request is consumed on the capture boot. Ending capture, losing the USB heartbeat, holding the normal reset control, or power-cycling returns the pedal to normal APP mode.
 
-The v2.1.04 firmware also presents the Spark-compatible Classic Bluetooth audio/control profile expected by the Android Spark app, reconnects a single saved phone bond after the pedal restarts, restores discoverability after disconnects, and clears stale serial-session state. If more than one phone is bonded, select the intended phone manually; automatic boot reconnect is intentionally limited to a single stored phone.
+The v2.1.05 firmware also presents the Spark-compatible Classic Bluetooth audio/control profile expected by the Android Spark app, reconnects a single saved phone bond after the pedal restarts, restores discoverability after disconnects, and clears stale serial-session state. If more than one phone is bonded, select the intended phone manually; automatic boot reconnect is intentionally limited to a single stored phone.
 
 - Capture presets sent by the Spark app.
 - Pull the presets referenced by the pedal's PresetList.txt, or its full preset library. **Pull listed presets** includes every listed bank; it is not limited to the four slots currently selected on the pedal.
@@ -303,7 +308,7 @@ Linux:    ./build_release_linux.sh
 The builders:
 
 - create a native PyInstaller application;
-- stage both the sanitized IPT v2.1.04 firmware project and the Ignitron 1.9.0 fallback, with preset data but no saved host serial port;
+- stage both the sanitized IPT v2.1.05 firmware project and the Ignitron 1.9.0 fallback, with preset data but no saved host serial port;
 - run a privacy check against the finished package;
 - name the archive with its operating system and CPU architecture.
 
@@ -311,7 +316,7 @@ The Windows builder additionally requires [Inno Setup 6](https://jrsoftware.org/
 
 `build_release_mac.sh` creates an `.icns` icon from `IPT.ico`. Set `MACOS_CODESIGN_IDENTITY` to a Developer ID Application identity when building a signed Mac app. Notarization still requires the normal Apple credential submission after signing.
 
-The GitHub Actions workflow builds and tests Windows x64, macOS ARM64, macOS Intel, Linux x64, and Linux ARM64. Tag `v2.1.04` publishes this maintenance release. Previous release tags remain available. Manual workflow runs can build artifacts without publishing.
+The GitHub Actions workflow builds and tests Windows x64, macOS ARM64, macOS Intel, Linux x64, and Linux ARM64. Tag `v2.1.05` publishes this maintenance release. Previous release tags remain available. Manual workflow runs can build artifacts without publishing.
 
 ## Release privacy
 

@@ -46,10 +46,21 @@ private:
     static bool blocklistUpPressed_;
     static bool blocklistDownPressed_;
     static bool blocklistDeletePressed_;
+    static bool blocklistUpRawPressed_;
+    static bool blocklistDownRawPressed_;
+    static bool blocklistDeleteRawPressed_;
+    static unsigned long blocklistUpChangedAt_;
+    static unsigned long blocklistDownChangedAt_;
+    static unsigned long blocklistDeleteChangedAt_;
     static bool blocklistInputReleasePending_;
     static bool blocklistExitRestartPending_;
 
     static void resetAllButtons();
+    static void resetBlocklistButtonDebounce();
+    static bool blocklistPressedEdge(bool rawPressed,
+                                     bool &lastRawPressed,
+                                     bool &stablePressed,
+                                     unsigned long &rawChangedAt);
     static void readBlocklistButtons();
     static bool isBankComboPressed();
 

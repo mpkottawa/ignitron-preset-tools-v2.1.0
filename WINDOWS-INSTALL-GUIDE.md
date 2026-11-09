@@ -11,7 +11,7 @@
 
 The installer does not need administrator access. Python and PlatformIO are installed only for the current Windows user. The Silicon Labs USB driver is a separate, signed hardware driver and may require administrator approval if Windows has not already installed it.
 
-The default folder includes the installed version, for example `Ignitron Preset Tools v2.1.04`. When Setup detects an installer-based earlier release, it displays both paths and proposes a sibling folder carrying the new version number. During the upgrade it renames the previous installation folder, backs up the bundled firmware projects under its timestamped `firmware backups` folder, and installs fresh release copies. Use **Back** to choose another empty destination if needed. IPT settings stored under `%APPDATA%` are preserved.
+The default folder includes the installed version, for example `Ignitron Preset Tools v2.1.05`. When Setup detects an installer-based earlier release, it displays both paths and proposes a sibling folder carrying the new version number. During the upgrade it renames the previous installation folder, backs up the bundled firmware projects under its timestamped `firmware backups` folder, and installs fresh release copies. Use **Back** to choose another empty destination if needed. IPT settings stored under `%APPDATA%` are preserved.
 
 ## What is checked
 
